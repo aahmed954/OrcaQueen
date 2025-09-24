@@ -1,0 +1,246 @@
+# Thanos Node - Worker Services and User Interfaces
+# Deploy to: 100.122.12.54
+version: '3.8'
+
+services:
+  # SillyTavern - Primary uncensored chat interface
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:latest
+    container_name: thanos-sillytavern
+    restart: always
+    ports:
+      - "8080:8000"
+    environment:
+      - SILLYTAVERN_PORT=8000
+      - ENABLE_EXTENSIONS=true
+      - DEFAULT_API_URL=http://100.96.197.84:4000/v1  # Oracle LiteLLM
+      - UNCENSORED_MODE=true
+      - WHITELIST=false  # Allow all connections
+    volumes:
+      - sillytavern_data:/home/node/app/data
+      - sillytavern_config:/home/node/app/config
+      - sillytavern_characters:/home/node/app/public/characters
+      - sillytavern_backgrounds:/home/node/app/public/backgrounds
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SillyTavern Extras - Multimodal capabilities
+  sillytavern-extras:
+    image: ghcr.io/sillytavern/sillytavern-extras:latest
+    container_name: thanos-extras
+    restart: always
+    ports:
+      - "5100:5100"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - EXTRAS_PORT=5100
+      - ENABLE_MODULES=caption,summarize,classify,tts,stt,sd
+    volumes:
+      - extras_data:/app/data
+      - extras_models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5100/api/modules"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # GPT Researcher - Autonomous research agent
+  gpt-researcher:
+    build:
+      context: ../services/gpt-researcher
+      dockerfile: Dockerfile
+    container_name: thanos-gpt-researcher
+    restart: always
+    ports:
+      - "8001:8080"
+    environment:
+      - OPENAI_API_BASE=http://100.96.197.84:4000/v1  # Oracle LiteLLM
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY:-sk-1234}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - SERP_API_KEY=${SERP_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - REPORT_TYPE=research_report
+      - AGENT_TYPE=auto_agent
+      - RETRIEVER=tavily
+      - MAX_ITERATIONS=5
+      - MAX_SEARCH_RESULTS_PER_QUERY=10
+      - DOC_PATH=/app/outputs
+    volumes:
+      - gpt_researcher_outputs:/app/outputs
+      - gpt_researcher_logs:/app/logs
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Document Processor - Google Drive integration
+  document-processor:
+    image: python:3.11-slim
+    container_name: thanos-doc-processor
+    restart: always
+    environment:
+      - GOOGLE_DRIVE_API_KEY=${GOOGLE_DRIVE_API_KEY:-}
+      - GOOGLE_DRIVE_API_KEY_ALT=${GOOGLE_DRIVE_API_KEY_ALT:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - QDRANT_URL=http://100.72.73.3:6333  # Starlord Qdrant
+      - COLLECTION_NAME=gemini-embeddings
+      - PROCESSING_WORKERS=4
+      - MAIN_ACCOUNT=azharahmed954@gmail.com
+      - SECONDARY_ACCOUNT=aahmed3688@gmail.com
+    volumes:
+      - ./scripts/document_processor.py:/app/document_processor.py:ro
+      - document_storage:/app/storage
+      - document_logs:/app/logs
+    command: ["python", "/app/document_processor.py"]
+    networks:
+      - aiswarm
+
+  # RAG Pipeline - Embedding and chunking service
+  rag-pipeline:
+    image: python:3.11-slim
+    container_name: thanos-rag-pipeline
+    restart: always
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - QDRANT_URL=http://100.72.73.3:6333  # Starlord Qdrant
+      - COLLECTION_NAME=gemini-embeddings
+      - CHUNK_SIZE=1000
+      - CHUNK_OVERLAP=200
+      - BATCH_SIZE=50
+      - EMBEDDING_MODEL=text-embedding-3-large
+    volumes:
+      - ./scripts/rag_pipeline.py:/app/rag_pipeline.py:ro
+      - rag_data:/app/data
+      - rag_logs:/app/logs
+    command: ["python", "/app/rag_pipeline.py"]
+    networks:
+      - aiswarm
+
+  # Thermal Monitor - RTX 3080 temperature monitoring
+  thermal-monitor:
+    image: nvidia/cuda:12.0-runtime-ubuntu22.04
+    container_name: thanos-thermal-monitor
+    restart: always
+    command: |
+      bash -c "
+      apt-get update && apt-get install -y python3 python3-pip lm-sensors curl
+      pip3 install nvidia-ml-py3 prometheus-client
+      sensors-detect --auto || true
+      cat > /monitor.py << 'EOF'
+      import nvidia_ml_py3.nvml as nvml
+      import subprocess
+      import time
+      from prometheus_client import start_http_server, Gauge
+
+      # Prometheus metrics
+      gpu_temperature = Gauge('rtx3080_temperature_celsius', 'RTX 3080 temperature')
+      gpu_utilization = Gauge('rtx3080_utilization_percent', 'RTX 3080 utilization')
+      gpu_memory_used = Gauge('rtx3080_memory_used_mb', 'RTX 3080 memory used')
+      cpu_temperature = Gauge('cpu_temperature_celsius', 'CPU temperature')
+
+      nvml.nvmlInit()
+      handle = nvml.nvmlDeviceGetHandleByIndex(0)
+
+      # Start Prometheus metrics server
+      start_http_server(9092)
+
+      print('RTX 3080 Thermal Monitor Started')
+
+      while True:
+          try:
+              # GPU metrics
+              temp = nvml.nvmlDeviceGetTemperature(handle, nvml.NVML_TEMPERATURE_GPU)
+              util = nvml.nvmlDeviceGetUtilizationRates(handle)
+              mem = nvml.nvmlDeviceGetMemoryInfo(handle)
+
+              gpu_temperature.set(temp)
+              gpu_utilization.set(util.gpu)
+              gpu_memory_used.set(mem.used // 1024**2)
+
+              # CPU temperature
+              try:
+                  sensors_output = subprocess.check_output(['sensors', '-u'], text=True)
+                  for line in sensors_output.split('\\n'):
+                      if 'temp1_input' in line:
+                          cpu_temp = float(line.split()[-1])
+                          cpu_temperature.set(cpu_temp)
+                          break
+              except:
+                  pass
+
+              status = 'EXCELLENT' if temp < 60 else 'WARNING' if temp < 75 else 'CRITICAL'
+              print(f'RTX 3080: {temp}°C ({status}) | Util: {util.gpu}% | Memory: {mem.used//1024**2}MB')
+
+              # Thermal throttling if needed
+              if temp > 80:
+                  print('WARNING: Implementing thermal throttling!')
+                  # Could implement GPU frequency reduction here
+
+              time.sleep(30)
+          except Exception as e:
+              print(f'Monitoring error: {e}')
+              time.sleep(60)
+      EOF
+      python3 /monitor.py
+      "
+    ports:
+      - "9092:9092"  # Prometheus metrics
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+
+volumes:
+  sillytavern_data:
+    driver: local
+  sillytavern_config:
+    driver: local
+  sillytavern_characters:
+    driver: local
+  sillytavern_backgrounds:
+    driver: local
+  extras_data:
+    driver: local
+  extras_models:
+    driver: local
+  gpt_researcher_outputs:
+    driver: local
+  gpt_researcher_logs:
+    driver: local
+  document_storage:
+    driver: local
+  document_logs:
+    driver: local
+  rag_data:
+    driver: local
+  rag_logs:
+    driver: local
+
+networks:
+  aiswarm:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24

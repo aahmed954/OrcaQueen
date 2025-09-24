@@ -1,0 +1,62 @@
+# Environment files
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Docker
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Data
+data/
+*.db
+*.sqlite
+
+# Model cache
+models/
+model-cache/
+*.bin
+*.safetensors
+
+# Secrets
+*.key
+*.pem
+*.crt
+*.p12
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Backups
+*.backup
+*.bak
+
+# Serena memories (keep locally)
+.serena/memories/

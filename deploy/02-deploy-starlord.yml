@@ -1,0 +1,192 @@
+# Starlord Node - High-Performance Inference
+# Deploy to: 100.72.73.3 (local deployment)
+# IMPORTANT: Qdrant already running on port 6333 - DO NOT RECREATE
+version: '3.8'
+
+services:
+  # vLLM - High-performance inference server
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: starlord-vllm
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+      - VLLM_ENGINE_ITERATION_TIMEOUT_S=1800
+      - VLLM_LOG_LEVEL=INFO
+    command: [
+      "--model", "NousResearch/Hermes-3-Llama-3.1-8B",  # Start with smaller model for testing
+      "--served-model-name", "hermes-3-8b",
+      "--host", "0.0.0.0",
+      "--port", "8000",
+      "--gpu-memory-utilization", "0.85",
+      "--max-model-len", "32768",
+      "--dtype", "auto",
+      "--enable-chunked-prefill",
+      "--max-num-batched-tokens", "8192",
+      "--tensor-parallel-size", "1"
+    ]
+    volumes:
+      - /mnt/rag-storage/models:/models:rw
+      - /mnt/rag-storage/model-cache:/root/.cache/huggingface:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+
+  # Model Manager - Download and manage models
+  model-manager:
+    image: python:3.11-slim
+    container_name: starlord-model-manager
+    restart: unless-stopped
+    environment:
+      - HF_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - MODELS_DIR=/models
+      - CACHE_DIR=/cache
+    volumes:
+      - /mnt/rag-storage/models:/models:rw
+      - /mnt/rag-storage/model-cache:/cache:rw
+      - ./scripts/model_manager.py:/app/model_manager.py:ro
+    command: ["python", "/app/model_manager.py"]
+    networks:
+      - aiswarm
+
+  # Performance Monitor - GPU and system monitoring
+  gpu-monitor:
+    image: nvidia/cuda:12.0-runtime-ubuntu22.04
+    container_name: starlord-gpu-monitor
+    restart: always
+    command: |
+      bash -c "
+      apt-get update && apt-get install -y python3 python3-pip curl
+      pip3 install nvidia-ml-py3 psutil prometheus-client
+      cat > /monitor.py << 'EOF'
+      import nvidia_ml_py3.nvml as nvml
+      import psutil
+      import time
+      from prometheus_client import start_http_server, Gauge
+
+      # Prometheus metrics
+      gpu_utilization = Gauge('gpu_utilization_percent', 'GPU utilization percentage')
+      gpu_memory_used = Gauge('gpu_memory_used_mb', 'GPU memory used in MB')
+      gpu_memory_total = Gauge('gpu_memory_total_mb', 'GPU memory total in MB')
+      gpu_temperature = Gauge('gpu_temperature_celsius', 'GPU temperature in Celsius')
+      system_memory_percent = Gauge('system_memory_percent', 'System memory usage percentage')
+      system_cpu_percent = Gauge('system_cpu_percent', 'System CPU usage percentage')
+
+      nvml.nvmlInit()
+      handle = nvml.nvmlDeviceGetHandleByIndex(0)
+
+      # Start Prometheus metrics server
+      start_http_server(9091)
+
+      print('RTX 4090 Performance Monitor Started')
+
+      while True:
+          try:
+              # GPU metrics
+              util = nvml.nvmlDeviceGetUtilizationRates(handle)
+              mem = nvml.nvmlDeviceGetMemoryInfo(handle)
+              temp = nvml.nvmlDeviceGetTemperature(handle, nvml.NVML_TEMPERATURE_GPU)
+
+              gpu_utilization.set(util.gpu)
+              gpu_memory_used.set(mem.used // 1024**2)
+              gpu_memory_total.set(mem.total // 1024**2)
+              gpu_temperature.set(temp)
+
+              # System metrics
+              system_memory_percent.set(psutil.virtual_memory().percent)
+              system_cpu_percent.set(psutil.cpu_percent(interval=1))
+
+              print(f'GPU: {util.gpu}% | Memory: {mem.used//1024**2}/{mem.total//1024**2}MB | Temp: {temp}°C')
+
+              time.sleep(30)
+          except Exception as e:
+              print(f'Monitoring error: {e}')
+              time.sleep(60)
+      EOF
+      python3 /monitor.py
+      "
+    ports:
+      - "9091:9091"  # Prometheus metrics
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+
+  # Qdrant Health Check - Verify existing Qdrant is healthy
+  qdrant-health:
+    image: curlimages/curl:latest
+    container_name: starlord-qdrant-health
+    restart: "no"
+    command: |
+      sh -c "
+      echo 'Checking existing Qdrant at localhost:6333...'
+      for i in 1 2 3 4 5; do
+        if curl -f http://host.docker.internal:6333/health 2>/dev/null; then
+          echo 'Qdrant is healthy!'
+
+          # Check collections
+          echo 'Checking Qdrant collections...'
+          curl -s http://host.docker.internal:6333/collections | grep -o '\"gemini-embeddings\"' && \
+            echo 'Found gemini-embeddings collection' || \
+            echo 'Collection gemini-embeddings not found'
+
+          exit 0
+        fi
+        echo 'Waiting for Qdrant... (attempt $$i/5)'
+        sleep 10
+      done
+      echo 'ERROR: Qdrant health check failed!'
+      exit 1
+      "
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - aiswarm
+
+  # Cost Optimizer Service
+  cost-optimizer:
+    image: python:3.11-slim
+    container_name: starlord-cost-optimizer
+    restart: always
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_API_KEY_ALT=${GEMINI_API_KEY_ALT:-}
+      - COST_REDUCTION_TARGET=0.80
+      - TZ=America/New_York
+    volumes:
+      - ./scripts/cost_optimizer.py:/app/cost_optimizer.py:ro
+      - cost_optimizer_data:/app/data
+    command: ["python", "/app/cost_optimizer.py"]
+    networks:
+      - aiswarm
+
+volumes:
+  cost_optimizer_data:
+    driver: local
+
+networks:
+  aiswarm:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24
