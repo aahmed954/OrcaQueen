@@ -1,62 +1,36 @@
 # Environment files
 .env
-.env.local
+.env.*
 .env.production
+*.env
+complete_api_keys.env
+
+# API Keys and Secrets
+**/api-keys.yml
+**/secrets.yml
+**/credentials.json
+**/*_keys.txt
+**/vault-token
+
+# Security Scan Outputs
+.trufflehog/
+.gitleaks/
+.security-reports/
+.snyk/
+.dependabot/
 
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-env/
 venv/
-ENV/
+.Python
 
-# Docker
-docker-compose.override.yml
-
-# Logs
+# Docker logs
 *.log
-logs/
-*.log.*
-
-# Data
-data/
-*.db
-*.sqlite
-
-# Model cache
-models/
-model-cache/
-*.bin
-*.safetensors
-
-# Secrets
-*.key
-*.pem
-*.crt
-*.p12
 
 # IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 
 # OS
 .DS_Store
-Thumbs.db
-
-# Temporary
-tmp/
-temp/
-*.tmp
-
-# Backups
-*.backup
-*.bak
-
-# Serena memories (keep locally)
-.serena/memories/

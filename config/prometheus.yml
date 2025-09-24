@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+rule_files:
+  - "alert.rules.yml"
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'oracle-node'
+    static_configs:
+      - targets: ['oracle:9100']  # Node exporter on Oracle
+    scrape_interval: 5s
+
+  - job_name: 'starlord-gpu'
+    static_configs:
+      - targets: ['starlord:9091']  # GPU exporter
+    scrape_interval: 5s
+
+  - job_name: 'thanos-thermal'
+    static_configs:
+      - targets: ['thanos:9092']  # Thermal monitor
+    scrape_interval: 5s
+
+  - job_name: 'litellm'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['litellm:4000']
+    scrape_interval: 10s

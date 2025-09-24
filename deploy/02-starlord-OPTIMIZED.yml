@@ -1,0 +1,197 @@
+# Starlord Node - High-Performance Inference (64GB RAM)
+# Deploy to: 100.72.73.3 (local deployment)
+# CRITICAL: Qdrant already running on port 6333 - DO NOT RECREATE
+
+version: '3.8'
+
+services:
+  # vLLM - High-performance inference server (Optimized for 64GB RAM)
+  vllm:
+    image: vllm/vllm-openai:v0.6.0  # Latest version with FP8 support
+    container_name: starlord-vllm
+    restart: always
+    ports:
+      - "0.0.0.0:8000:8000"  # Bind to all interfaces for Tailscale access
+    environment:
+      CUDA_VISIBLE_DEVICES: 0
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      VLLM_ENGINE_ITERATION_TIMEOUT_S: 1800
+      VLLM_LOG_LEVEL: INFO
+      HF_TOKEN: ${HUGGINGFACE_TOKEN}
+      # Performance optimizations for 64GB RAM
+      VLLM_CPU_KVCACHE_SPACE: 40  # 40GB for KV cache
+      VLLM_USE_V2_BLOCK_MANAGER: true
+    command: [
+      "--model", "TheBloke/Mixtral-8x7B-Instruct-v0.1-GPTQ",  # Best model for 24GB VRAM
+      "--served-model-name", "mixtral-8x7b",
+      "--host", "0.0.0.0",
+      "--port", "8000",
+      "--gpu-memory-utilization", "0.85",
+      "--max-model-len", "128000",  # Full 128K context
+      "--dtype", "auto",  # Auto-select FP8 if available
+      "--kv-cache-dtype", "fp8_e5m2",  # 50% memory reduction
+      "--enable-prefix-caching",
+      "--enable-chunked-prefill",
+      "--max-num-batched-tokens", "16384",  # Increased for 64GB
+      "--max-num-seqs", "16",  # Increased batch size
+      "--tensor-parallel-size", "1",
+      "--disable-log-stats"
+    ]
+    volumes:
+      - /mnt/rag-storage/models:/models:rw
+      - /mnt/rag-storage/model-cache:/root/.cache/huggingface:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_PTRACE  # Required for GPU access
+
+  # Model Manager - Download and manage models
+  model-manager:
+    image: python:3.11-slim
+    container_name: starlord-model-manager
+    restart: unless-stopped
+    user: "1000:1000"  # Non-root user
+    environment:
+      HF_TOKEN: ${HUGGINGFACE_TOKEN}
+      MODELS_DIR: /models
+      CACHE_DIR: /cache
+      DOWNLOAD_MODELS: "TheBloke/Mixtral-8x7B-Instruct-v0.1-GPTQ,TheBloke/Mistral-7B-Instruct-v0.2-GPTQ,microsoft/Phi-3-mini-4k-instruct"
+    volumes:
+      - /mnt/rag-storage/models:/models:rw
+      - /mnt/rag-storage/model-cache:/cache:rw
+      - ./scripts/model_manager.py:/app/model_manager.py:ro
+    command: ["python", "/app/model_manager.py"]
+    networks:
+      - aiswarm
+
+  # GPU Monitor with Prometheus metrics
+  gpu-monitor:
+    image: nvidia/dcgm-exporter:3.3.5-3.4.1-ubuntu22.04
+    container_name: starlord-gpu-monitor
+    restart: always
+    ports:
+      - "0.0.0.0:9091:9400"
+    environment:
+      DCGM_EXPORTER_LISTEN: :9400
+      DCGM_EXPORTER_KUBERNETES: false
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/nvidiactl:/dev/nvidiactl
+      - /dev/nvidia0:/dev/nvidia0
+    volumes:
+      - /usr/bin/nvidia-smi:/usr/bin/nvidia-smi:ro
+      - /usr/lib/x86_64-linux-gnu/libnvidia-ml.so:/usr/lib/x86_64-linux-gnu/libnvidia-ml.so:ro
+    networks:
+      - aiswarm
+
+  # Qdrant Optimizer - Optimize existing Qdrant instance
+  qdrant-optimizer:
+    image: curlimages/curl:latest
+    container_name: starlord-qdrant-optimizer
+    restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: |
+      sh -c "
+      echo 'Optimizing existing Qdrant at localhost:6333...'
+
+      # Check health
+      curl -f http://host.docker.internal:6333/health || exit 1
+
+      # Optimize collection if it exists
+      curl -X PUT 'http://host.docker.internal:6333/collections/gemini-embeddings' \
+        -H 'Content-Type: application/json' \
+        -d '{
+          \"optimizer_config\": {
+            \"deleted_threshold\": 0.2,
+            \"vacuum_min_vector_number\": 1000,
+            \"default_segment_number\": 4,
+            \"max_optimization_threads\": 8
+          },
+          \"hnsw_config\": {
+            \"m\": 32,
+            \"ef_construct\": 200,
+            \"full_scan_threshold\": 10000,
+            \"max_indexing_threads\": 8,
+            \"on_disk\": false
+          }
+        }' || echo 'Collection optimization skipped'
+
+      echo 'Qdrant optimization complete'
+      "
+    networks:
+      - aiswarm
+
+  # Cost Optimizer with Model Routing
+  cost-optimizer:
+    build:
+      context: ./services/cost-optimizer
+      dockerfile: Dockerfile
+    container_name: starlord-cost-optimizer
+    restart: always
+    user: "1000:1000"  # Non-root user
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_API_KEY_ALT: ${GEMINI_API_KEY_ALT}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      COST_REDUCTION_TARGET: 0.80
+      TZ: America/New_York
+      REDIS_URL: redis://:${REDIS_PASSWORD}@100.96.197.84:6379
+    volumes:
+      - cost_optimizer_data:/app/data
+      - ./logs/cost-optimizer:/app/logs
+    networks:
+      - aiswarm
+    security_opt:
+      - no-new-privileges:true
+
+  # Request Router for intelligent load balancing
+  request-router:
+    build:
+      context: ./services/request-router
+      dockerfile: Dockerfile
+    container_name: starlord-request-router
+    restart: always
+    ports:
+      - "0.0.0.0:7999:7999"
+    environment:
+      VLLM_PRIMARY: http://localhost:8000
+      VLLM_SECONDARY: http://localhost:8001
+      THANOS_BACKUP: http://100.122.12.54:8002
+      RAILWAY_BACKUP: ${RAILWAY_API_URL}
+      ROUTING_STRATEGY: complexity_based
+      CONSUL_URL: http://100.96.197.84:8500
+    networks:
+      - aiswarm
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  cost_optimizer_data:
+    driver: local
+
+networks:
+  aiswarm:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.21.0.0/24

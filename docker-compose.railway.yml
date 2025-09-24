@@ -1,0 +1,59 @@
+version: '3.3'
+
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    ports:
+      - "3000:8080"
+    environment:
+      MODELS_CACHE_TTL: 600
+      SEARCH_ENGINE: searxng
+      SEARCH_ENGINE_BASE_URL: http://searxng:8080
+      OPENAI_API_BASE: http://litellm:4000/v1
+      OPENAI_API_KEY: sk-local-only
+    volumes:
+      - open-webui-data:/app/backend/data
+    deploy:
+      resources:
+        limits:
+          memory: 32G
+          cpus: '32'
+    depends_on:
+      - n8n
+
+  n8n:
+    image: n8nio/n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://n8n:5678/
+    volumes:
+      - n8n-data:/home/node/.n8n
+    deploy:
+      resources:
+        limits:
+          memory: 32G
+          cpus: '32'
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 32G
+          cpus: '32'
+
+volumes:
+  open-webui-data:
+  n8n-data:
+  redis-data:

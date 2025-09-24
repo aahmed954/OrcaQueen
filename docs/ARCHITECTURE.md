@@ -219,6 +219,10 @@ prometheus:
     - oracle:9090
     - starlord:9091
     - thanos:9092
+  alert_rules:
+    - high_gpu_util >85%
+    - high_latency >5s
+    - cost_overrun >20%
 
 grafana:
   dashboards:
@@ -227,11 +231,16 @@ grafana:
     - cost_tracking
     - model_usage
 
-langfuse:
-  llm_observability:
-    - request_tracing
-    - token_usage
-    - cost_analysis
+alertmanager:
+  alerts:
+    - GPU temperature >80°C
+    - API errors >1%
+
+elk:
+  elasticsearch: logs storage
+  logstash: log processing
+  kibana: visualization
+  integration: docker logs to ELK
 ```
 
 ### Alert Thresholds
@@ -240,6 +249,7 @@ langfuse:
 - API Errors > 1%
 - Response Time > 5s
 - Cost Overrun > 20%
+- Auto-scaling triggers in main.py
 
 ## 🛠️ Maintenance Windows
 
@@ -255,6 +265,7 @@ langfuse:
 3. Update Starlord (inference)
 4. Validate all services
 5. Rollback on failure
+6. CI/CD via GitHub Actions for multi-arch
 
 ## 📚 Integration Points
 

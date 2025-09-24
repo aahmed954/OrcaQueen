@@ -1,0 +1,387 @@
+# Thanos Node - Worker Services with Security Hardening
+# Deploy to: 100.122.12.54
+# RTX 3080 10GB, 61GB RAM
+
+version: '3.8'
+
+services:
+  # SillyTavern - Primary chat interface (secured)
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:latest
+    container_name: thanos-sillytavern
+    restart: always
+    user: "1000:1000"  # Non-root user
+    ports:
+      - "100.122.12.54:8080:8000"
+    environment:
+      SILLYTAVERN_PORT: 8000
+      ENABLE_EXTENSIONS: true
+      DEFAULT_API_URL: http://100.96.197.84:4000/v1
+      API_KEY: ${LITELLM_MASTER_KEY}
+      UNCENSORED_MODE: true
+      WHITELIST: true  # Enable IP whitelist
+      WHITELIST_IPS: "100.96.197.84,100.72.73.3,100.122.12.54,127.0.0.1"
+      ENABLE_HTTPS: false  # TLS termination at HAProxy
+      SESSION_SECRET: ${SESSION_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+    volumes:
+      - sillytavern_data:/app/data
+      - sillytavern_config:/app/config
+      - sillytavern_characters:/app/public/characters
+      - sillytavern_backgrounds:/app/public/backgrounds
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # SillyTavern Extras - Multimodal capabilities
+  sillytavern-extras:
+    image: ghcr.io/sillytavern/sillytavern-extras:latest
+    container_name: thanos-extras
+    restart: always
+    user: "1000:1000"  # Non-root user
+    ports:
+      - "100.122.12.54:5100:5100"
+    environment:
+      CUDA_VISIBLE_DEVICES: 0
+      EXTRAS_PORT: 5100
+      ENABLE_MODULES: caption,summarize,classify,tts,stt,sd
+      API_KEY: ${LITELLM_MASTER_KEY}  # Require API key
+      MAX_WORKERS: 4
+    volumes:
+      - extras_data:/app/data
+      - extras_models:/app/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5100/api/modules"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_PTRACE  # Required for GPU
+
+  # GPT Researcher - Autonomous research agent
+  gpt-researcher:
+    build:
+      context: ./services/gpt-researcher
+      dockerfile: Dockerfile
+    container_name: thanos-gpt-researcher
+    restart: always
+    user: "1000:1000"  # Non-root user
+    ports:
+      - "100.122.12.54:8001:8080"
+    environment:
+      OPENAI_API_BASE: http://100.96.197.84:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      # Additional API keys for web search
+      BRAVE_API_KEY: ${BRAVE_API_KEY}
+      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY}
+      # Configuration
+      REPORT_TYPE: research_report
+      AGENT_TYPE: auto_agent
+      MAX_ITERATIONS: 10
+      MAX_SEARCH_RESULTS_PER_QUERY: 20
+      DOC_PATH: /app/outputs
+      ENABLE_CACHING: true
+      CACHE_TTL: 3600
+    volumes:
+      - gpt_researcher_outputs:/app/outputs
+      - gpt_researcher_cache:/app/cache
+      - gpt_researcher_logs:/app/logs
+    networks:
+      - aiswarm
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # Backup vLLM for Thanos (smaller model)
+  vllm-backup:
+    image: vllm/vllm-openai:v0.6.0
+    container_name: thanos-vllm-backup
+    restart: always
+    ports:
+      - "100.122.12.54:8002:8000"
+    environment:
+      CUDA_VISIBLE_DEVICES: 0
+      VLLM_WORKER_MULTIPROC_METHOD: spawn
+      HF_TOKEN: ${HUGGINGFACE_TOKEN}
+    command: [
+      "--model", "TheBloke/Mistral-7B-Instruct-v0.2-GPTQ",
+      "--served-model-name", "mistral-7b-thanos",
+      "--host", "0.0.0.0",
+      "--port", "8000",
+      "--gpu-memory-utilization", "0.90",  # Use most of 10GB
+      "--max-model-len", "32768",
+      "--dtype", "auto",
+      "--enable-prefix-caching",
+      "--max-num-seqs", "8",
+      "--max-num-batched-tokens", "4096"
+    ]
+    volumes:
+      - /opt/models:/models:rw
+      - model_cache:/root/.cache/huggingface:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SYS_PTRACE  # Required for GPU
+
+  # Document Processor with encryption
+  document-processor:
+    build:
+      context: ./services/document-processor
+      dockerfile: Dockerfile
+    container_name: thanos-doc-processor
+    restart: always
+    user: "1000:1000"  # Non-root user
+    environment:
+      # Encrypted credentials (decrypt at runtime)
+      ENCRYPTED_GOOGLE_KEY: ${ENCRYPTED_GOOGLE_KEY}
+      ENCRYPTED_GEMINI_KEY: ${ENCRYPTED_GEMINI_KEY}
+      DECRYPTION_KEY: ${VAULT_DEV_ROOT_TOKEN}  # Get from Vault
+      # Qdrant configuration
+      QDRANT_URL: http://100.72.73.3:6333
+      QDRANT_COLLECTION: gemini-embeddings
+      # Processing configuration
+      PROCESSING_WORKERS: 8  # Use more RAM
+      CHUNK_SIZE: 1000
+      CHUNK_OVERLAP: 200
+      BATCH_SIZE: 100
+      # Google accounts
+      MAIN_ACCOUNT: ${GOOGLE_DRIVE_MAIN}
+      SECONDARY_ACCOUNT: ${GOOGLE_DRIVE_SECONDARY}
+    volumes:
+      - document_storage:/app/storage
+      - document_logs:/app/logs
+    networks:
+      - aiswarm
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # RAG Pipeline with security
+  rag-pipeline:
+    build:
+      context: ./services/rag-pipeline
+      dockerfile: Dockerfile
+    container_name: thanos-rag-pipeline
+    restart: always
+    user: "1000:1000"  # Non-root user
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_API_KEY_ALT: ${GEMINI_API_KEY_ALT}
+      QDRANT_URL: http://100.72.73.3:6333
+      COLLECTION_NAME: gemini-embeddings
+      EMBEDDING_MODEL: text-embedding-3-large
+      MAX_RETRIES: 3
+      RATE_LIMIT: 100  # Requests per minute
+    volumes:
+      - rag_data:/app/data
+      - rag_logs:/app/logs
+    networks:
+      - aiswarm
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # Thermal Monitor with alerts
+  thermal-monitor:
+    image: nvidia/cuda:12.0-runtime-ubuntu22.04
+    container_name: thanos-thermal-monitor
+    restart: always
+    ports:
+      - "100.122.12.54:9092:9092"
+    environment:
+      PROMETHEUS_PORT: 9092
+      ALERT_TEMP_GPU: 80  # Alert at 80°C
+      ALERT_TEMP_CPU: 75
+      THROTTLE_TEMP_GPU: 85  # Throttle at 85°C
+      CONSUL_URL: http://100.96.197.84:8500
+    command: |
+      bash -c "
+      apt-get update && apt-get install -y python3 python3-pip lm-sensors curl
+      pip3 install nvidia-ml-py3 prometheus-client requests
+      sensors-detect --auto || true
+
+      cat > /monitor.py << 'EOF'
+      import nvidia_ml_py3.nvml as nvml
+      import subprocess
+      import time
+      import os
+      import requests
+      from prometheus_client import start_http_server, Gauge
+
+      # Prometheus metrics
+      gpu_temperature = Gauge('rtx3080_temperature_celsius', 'RTX 3080 temperature')
+      gpu_utilization = Gauge('rtx3080_utilization_percent', 'RTX 3080 utilization')
+      gpu_memory_used = Gauge('rtx3080_memory_used_mb', 'RTX 3080 memory used')
+      cpu_temperature = Gauge('cpu_temperature_celsius', 'CPU temperature')
+
+      nvml.nvmlInit()
+      handle = nvml.nvmlDeviceGetHandleByIndex(0)
+
+      # Start Prometheus metrics server
+      start_http_server(int(os.getenv('PROMETHEUS_PORT', 9092)))
+
+      ALERT_TEMP_GPU = int(os.getenv('ALERT_TEMP_GPU', 80))
+      THROTTLE_TEMP_GPU = int(os.getenv('THROTTLE_TEMP_GPU', 85))
+
+      print('RTX 3080 Thermal Monitor Started')
+
+      while True:
+          try:
+              # GPU metrics
+              temp = nvml.nvmlDeviceGetTemperature(handle, nvml.NVML_TEMPERATURE_GPU)
+              util = nvml.nvmlDeviceGetUtilizationRates(handle)
+              mem = nvml.nvmlDeviceGetMemoryInfo(handle)
+
+              gpu_temperature.set(temp)
+              gpu_utilization.set(util.gpu)
+              gpu_memory_used.set(mem.used // 1024**2)
+
+              # CPU temperature
+              try:
+                  sensors_output = subprocess.check_output(['sensors', '-u'], text=True)
+                  for line in sensors_output.split('\\n'):
+                      if 'temp1_input' in line:
+                          cpu_temp = float(line.split()[-1])
+                          cpu_temperature.set(cpu_temp)
+                          break
+              except:
+                  pass
+
+              status = 'EXCELLENT' if temp < 60 else 'GOOD' if temp < 75 else 'WARNING' if temp < ALERT_TEMP_GPU else 'CRITICAL'
+              print(f'RTX 3080: {temp}°C ({status}) | Util: {util.gpu}% | Memory: {mem.used//1024**2}MB')
+
+              # Thermal management
+              if temp >= THROTTLE_TEMP_GPU:
+                  print(f'CRITICAL: Temperature {temp}°C exceeds threshold! Implementing throttling...')
+                  # Set power limit to reduce temperature
+                  subprocess.run(['nvidia-smi', '-pl', '200'], check=False)
+
+                  # Alert to monitoring system
+                  try:
+                      requests.post(f\"http://100.96.197.84:9090/api/v1/alerts\",
+                                  json={'alert': 'GPU_OVERHEAT', 'temp': temp})
+                  except:
+                      pass
+              elif temp < 70:
+                  # Restore normal power limit when cool
+                  subprocess.run(['nvidia-smi', '-pl', '320'], check=False)
+
+              time.sleep(30)
+          except Exception as e:
+              print(f'Monitoring error: {e}')
+              time.sleep(60)
+      EOF
+
+      python3 /monitor.py
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - aiswarm
+    security_opt:
+      - no-new-privileges:true
+    cap_add:
+      - SYS_ADMIN  # Required for nvidia-smi power management
+
+  # Node Exporter for system metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: thanos-node-exporter
+    restart: always
+    ports:
+      - "100.122.12.54:9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - aiswarm
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sillytavern_data:
+    driver: local
+  sillytavern_config:
+    driver: local
+  sillytavern_characters:
+    driver: local
+  sillytavern_backgrounds:
+    driver: local
+  extras_data:
+    driver: local
+  extras_models:
+    driver: local
+  gpt_researcher_outputs:
+    driver: local
+  gpt_researcher_cache:
+    driver: local
+  gpt_researcher_logs:
+    driver: local
+  document_storage:
+    driver: local
+  document_logs:
+    driver: local
+  rag_data:
+    driver: local
+  rag_logs:
+    driver: local
+  model_cache:
+    driver: local
+
+networks:
+  aiswarm:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.22.0.0/24

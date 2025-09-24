@@ -1,0 +1,34 @@
+# SearXNG Settings for Local Privacy Search with Caching
+# Deploy on Node C (Oracle ARM)
+
+search:
+  safe_search: 0
+  autocomplete: false
+
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+  - name: bing
+    engine: bing
+    shortcut: b
+  - name: brave
+    engine: brave
+    shortcut: br
+
+cache:
+  - name: "ExpireCache"
+    backend: "redis"
+    db_url: "redis://redis:6379/0"
+
+redis:
+  url: "redis://redis:6379/0"
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "your-secret-key"
+
+ui:
+  static_use_hash: true
+  favicon: true

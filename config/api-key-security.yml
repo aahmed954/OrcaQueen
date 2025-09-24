@@ -1,0 +1,378 @@
+# CRITICAL API KEY SECURITY CONFIGURATION
+# AI-SWARM-MIAMI-2025
+#
+# ⚠️ IMMEDIATE ACTIONS REQUIRED:
+# 1. Remove all API keys from this repository
+# 2. Rotate all exposed keys immediately
+# 3. Never commit actual keys to version control
+
+# === CRITICAL KEY INVENTORY ===
+api_keys_inventory:
+  openrouter:
+    status: EXPOSED_IN_REQUEST
+    risk_level: CRITICAL
+    key_prefix: "sk-or-v1-"
+    immediate_actions:
+      - rotate_immediately
+      - remove_from_codebase
+      - implement_vault_storage
+    usage_quota: unlimited
+    exposure_impact: financial_loss
+
+  gemini:
+    status: EXPOSED_IN_REQUEST
+    risk_level: CRITICAL
+    keys_exposed: 2
+    total_credits: 50000
+    immediate_actions:
+      - rotate_both_keys
+      - implement_dual_key_rotation
+      - monitor_usage_anomalies
+    exposure_impact: quota_exhaustion
+
+  openai:
+    status: MENTIONED
+    risk_level: HIGH
+    immediate_actions:
+      - verify_not_exposed
+      - implement_secure_storage
+      - enable_usage_limits
+
+  anthropic:
+    status: MENTIONED
+    risk_level: HIGH
+    immediate_actions:
+      - verify_not_exposed
+      - implement_secure_storage
+      - enable_rate_limiting
+
+  railway:
+    status: MENTIONED
+    risk_level: HIGH
+    immediate_actions:
+      - audit_deployment_access
+      - implement_service_accounts
+      - restrict_permissions
+
+# === VAULT CONFIGURATION ===
+vault_setup:
+  provider: hashicorp_vault  # or aws_secrets_manager
+
+  installation:
+    docker_compose: |
+      vault:
+        image: hashicorp/vault:latest
+        cap_add:
+          - IPC_LOCK
+        environment:
+          VAULT_ADDR: 'https://0.0.0.0:8200'
+          VAULT_LOCAL_CONFIG: |
+            {
+              "backend": {"file": {"path": "/vault/file"}},
+              "listener": {
+                "tcp": {
+                  "address": "0.0.0.0:8200",
+                  "tls_cert_file": "/vault/certs/cert.pem",
+                  "tls_key_file": "/vault/certs/key.pem"
+                }
+              },
+              "ui": true
+            }
+        volumes:
+          - vault-data:/vault/file
+          - ./certs:/vault/certs:ro
+        ports:
+          - "8200:8200"
+
+  policies:
+    api_keys:
+      path: secret/api-keys/*
+      capabilities: ["read"]
+
+    rotation:
+      path: secret/rotate/*
+      capabilities: ["create", "update"]
+
+  integration:
+    litellm: |
+      # LiteLLM Vault integration
+      vault_addr: https://vault.service:8200
+      vault_auth_method: approle
+      vault_role_id: ${VAULT_ROLE_ID}
+      vault_secret_path: secret/api-keys
+
+    application: |
+      # Application integration
+      import hvac
+      client = hvac.Client(url='https://vault:8200')
+      client.token = vault_token
+      secrets = client.secrets.kv.v2.read_secret_version(
+          path='api-keys/openrouter'
+      )
+
+# === ENCRYPTION AT REST ===
+encryption_at_rest:
+  database:
+    postgresql:
+      transparent_data_encryption: true
+      key_management: vault
+      encryption_algorithm: AES-256-CBC
+
+  filesystem:
+    api_key_files: NEVER_STORE_ON_DISK
+    config_files:
+      encryption: required
+      algorithm: AES-256-GCM
+
+  docker_volumes:
+    encryption: required
+    driver: docker-volume-encrypt
+
+# === ENCRYPTION IN TRANSIT ===
+encryption_in_transit:
+  internal_communication:
+    protocol: mTLS  # Mutual TLS
+    certificate_authority: internal_ca
+    certificate_rotation: 30_days
+
+  external_api_calls:
+    enforce_tls: true
+    min_version: TLSv1.3
+    cipher_suites:
+      - TLS_AES_256_GCM_SHA384
+      - TLS_CHACHA20_POLY1305_SHA256
+    certificate_validation: strict
+
+  tailscale_mesh:
+    wireguard_encryption: true
+    key_rotation: automatic
+    perfect_forward_secrecy: true
+
+# === NETWORK SEGMENTATION ===
+network_segmentation:
+  zones:
+    dmz:
+      services: [open_webui, sillytavern]
+      access: restricted_ingress
+
+    application:
+      services: [litellm, vllm, gpt_researcher]
+      access: internal_only
+
+    data:
+      services: [postgresql, redis, qdrant]
+      access: application_zone_only
+
+    management:
+      services: [monitoring, vault, logging]
+      access: admin_only
+
+  firewall_rules:
+    default: deny_all
+
+    dmz_to_app:
+      source: dmz
+      destination: application
+      ports: [4000]  # LiteLLM only
+      protocol: https
+
+    app_to_data:
+      source: application
+      destination: data
+      ports: [5432, 6379, 6333]
+      protocol: tls
+
+    no_direct_internet:
+      from_zones: [data, management]
+      to: internet
+      action: block
+
+# === AUTHENTICATION & AUTHORIZATION ===
+authentication:
+  multi_factor:
+    enabled: true
+    methods:
+      - totp
+      - hardware_token
+    required_for:
+      - admin_access
+      - api_key_management
+      - configuration_changes
+
+  service_accounts:
+    litellm_service:
+      permissions: [read_api_keys, call_models]
+      key_access: vault_only
+
+    vllm_service:
+      permissions: [serve_models]
+      key_access: none_required
+
+    researcher_service:
+      permissions: [read_api_keys, web_search]
+      key_access: vault_only
+
+  rbac:
+    roles:
+      admin:
+        permissions: all
+        mfa_required: true
+
+      operator:
+        permissions: [view_logs, restart_services]
+        mfa_required: false
+
+      user:
+        permissions: [use_chat, view_own_history]
+        mfa_required: false
+
+# === AUDIT LOGGING ===
+audit_logging:
+  comprehensive_logging:
+    api_key_events:
+      - access_attempt
+      - access_granted
+      - access_denied
+      - rotation_initiated
+      - rotation_completed
+      - deletion
+
+    sensitive_operations:
+      - vault_unsealing
+      - secret_retrieval
+      - configuration_change
+      - service_restart
+      - backup_creation
+
+  log_shipping:
+    destination: siem_system
+    encryption: required
+    integrity: hash_chain
+
+  retention:
+    audit_logs: 2_years
+    security_events: 1_year
+    api_usage: 90_days
+
+# === COMPLIANCE CONSIDERATIONS ===
+compliance:
+  data_protection:
+    gdpr:
+      api_keys_are_pii: false
+      but_linked_to_users: true
+      requires: audit_trail
+
+    pci_dss:
+      not_applicable: true  # Unless processing payments
+
+  security_standards:
+    soc2:
+      relevant_controls:
+        - access_control
+        - encryption
+        - monitoring
+        - incident_response
+
+    iso27001:
+      applicable_controls:
+        - A.10: Cryptography
+        - A.12: Operations security
+        - A.13: Communications security
+
+# === INCIDENT RESPONSE PLAN ===
+incident_response:
+  api_key_compromise:
+    detection:
+      - unusual_usage_patterns
+      - geographic_anomalies
+      - rate_limit_violations
+
+    immediate_actions:
+      1_minute:
+        - block_suspected_key
+        - alert_security_team
+
+      5_minutes:
+        - rotate_affected_key
+        - audit_recent_usage
+
+      30_minutes:
+        - forensic_analysis
+        - notify_stakeholders
+
+    post_incident:
+      - root_cause_analysis
+      - security_improvement
+      - documentation_update
+
+# === DEPLOYMENT SECURITY ===
+deployment_security:
+  ci_cd_pipeline:
+    secrets_scanning:
+      tools: [trufflehog, gitleaks]
+      block_on_detection: true
+
+    environment_variables:
+      never_hardcode: true
+      inject_at_runtime: true
+      source: vault_only
+
+  infrastructure_as_code:
+    terraform:
+      state_encryption: true
+      backend: encrypted_s3
+
+    docker:
+      no_secrets_in_images: true
+      base_image_scanning: true
+      signed_images: recommended
+
+# === IMPLEMENTATION CHECKLIST ===
+implementation_checklist:
+  immediate_priority:
+    - [ ] Remove all API keys from repository
+    - [ ] Rotate OpenRouter key immediately
+    - [ ] Rotate both Gemini keys immediately
+    - [ ] Set up Vault or AWS Secrets Manager
+    - [ ] Configure vault policies
+    - [ ] Implement service accounts
+    - [ ] Enable audit logging
+    - [ ] Set up key rotation automation
+
+  within_24_hours:
+    - [ ] Implement mTLS for internal communication
+    - [ ] Configure network segmentation
+    - [ ] Set up SIEM integration
+    - [ ] Enable comprehensive monitoring
+    - [ ] Test incident response procedures
+
+  within_1_week:
+    - [ ] Complete security training
+    - [ ] Document all procedures
+    - [ ] Conduct penetration testing
+    - [ ] Implement backup encryption
+    - [ ] Set up compliance reporting
+
+# === MONITORING & ALERTS ===
+monitoring_alerts:
+  critical_alerts:
+    api_key_exposed:
+      detection: log_pattern_matching
+      action: immediate_rotation
+
+    vault_unsealed:
+      detection: audit_log
+      action: verify_authorized
+
+    unusual_api_usage:
+      detection: anomaly_detection
+      threshold: 3x_normal
+      action: investigate_and_throttle
+
+  dashboards:
+    security_overview:
+      - api_key_access_frequency
+      - failed_authentication_attempts
+      - encryption_operations
+      - vault_health_status
+      - network_segmentation_violations

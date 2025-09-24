@@ -70,6 +70,21 @@ check_prerequisites() {
         exit 1
     fi
 
+    # ARM compatibility check for Oracle
+    echo -e "${YELLOW}[→]${NC} Validating ARM compatibility on Oracle..."
+    oracle_arch=$(ssh "root@$ORACLE_IP" "uname -m")
+    if [[ "$oracle_arch" != "aarch64" ]]; then
+        echo -e "${RED}[✗]${NC} Oracle node is not ARM64 (got $oracle_arch)"
+        exit 1
+    fi
+    arm_test=$(ssh "root@$ORACLE_IP" "docker run --rm --platform linux/arm64 arm64v8/hello-world" 2>/dev/null || echo "failed")
+    if [[ "$arm_test" != "failed" ]]; then
+        echo -e "${GREEN}[✓]${NC} ARM Docker support confirmed on Oracle"
+    else
+        echo -e "${RED}[✗]${NC} ARM Docker test failed on Oracle"
+        exit 1
+    fi
+
     echo -e "${GREEN}[✓]${NC} All prerequisites met"
 }
 
@@ -139,6 +154,7 @@ deploy_oracle() {
     # Copy necessary files
     scp -r "$PROJECT_ROOT/deploy" "root@$ORACLE_IP:/opt/ai-swarm/"
     scp -r "$PROJECT_ROOT/config" "root@$ORACLE_IP:/opt/ai-swarm/"
+    scp -r "$PROJECT_ROOT/scripts" "root@$ORACLE_IP:/opt/ai-swarm/"
     scp "$PROJECT_ROOT/.env" "root@$ORACLE_IP:/opt/ai-swarm/"
 
     echo -e "${YELLOW}[→]${NC} Starting Oracle services..."
@@ -163,6 +179,23 @@ deploy_oracle() {
     else
         echo -e "${RED}[✗]${NC} LiteLLM Gateway failed to start"
         return 1
+    fi
+
+    # Vault health check
+    if curl -f "http://$ORACLE_IP:8200/v1/sys/health?standbyok=true" &>/dev/null; then
+        echo -e "${GREEN}[✓]${NC} Vault is running"
+    else
+        echo -e "${RED}[✗]${NC} Vault failed to start"
+        return 1
+    fi
+
+    # Rotate API keys using Vault
+    echo -e "${YELLOW}[→]${NC} Rotating API keys with Vault..."
+    ssh "root@$ORACLE_IP" "cd /opt/ai-swarm && VAULT_ADDR=http://localhost:8200 VAULT_TOKEN=${VAULT_DEV_ROOT_TOKEN} python scripts/key_rotation.py all"
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}[✓]${NC} API key rotation complete"
+    else
+        echo -e "${YELLOW}[!]${NC} API key rotation warning - check manually"
     fi
 
     echo -e "${GREEN}[✓]${NC} Oracle node deployment complete"
@@ -354,6 +387,27 @@ run_tests() {
     fi
 }
 
+# Function to setup automated backups
+backup_setup() {
+    print_section "SETTING UP AUTOMATED BACKUPS"
+    
+    # Oracle - Postgres backup
+    ssh "root@$ORACLE_IP" "
+        mkdir -p /backup/postgres
+        echo '0 2 * * * docker exec oracle-postgres pg_dump -U litellm litellm > /backup/postgres/\$(date +\%Y\%m\%d).sql' | crontab -
+    "
+    echo -e "${GREEN}[✓]${NC} Postgres backup cron set on Oracle"
+    
+    # Starlord - Qdrant snapshot
+    ssh "starlord@$STARLORD_IP" "
+        mkdir -p /backup/qdrant
+        echo '0 2 * * * curl -X PUT \"http://localhost:6333/collections/gemini-embeddings/snapshot\" -o /backup/qdrant/\$(date +\%Y\%m\%d).snapshot' | crontab -
+    "
+    echo -e "${GREEN}[✓]${NC} Qdrant backup cron set on Starlord"
+    
+    echo -e "${GREEN}[✓]${NC} Automated backups configured (daily at 2AM)"
+}
+
 # Function to display access information
 display_access_info() {
     print_section "DEPLOYMENT COMPLETE"
@@ -410,6 +464,9 @@ main() {
 
     # Run tests
     run_tests
+
+    # Setup backups
+    backup_setup
 
     # Display access info
     display_access_info

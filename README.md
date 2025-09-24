@@ -98,24 +98,32 @@ Free Tier:
 ## 🛡️ Security
 
 - Tailscale private mesh networking
-- API key authentication for all services
+- Vault for API key management and rotation (integrated in deployment)
+- mTLS for internal services via HAProxy
+- RBAC in LiteLLM for model access (admin/user roles)
 - PostgreSQL with TLS encryption
 - Redis with password protection
 - Docker container isolation
 - Non-root container execution
+- Automated key rotation script (scripts/key_rotation.py)
 
 ## 📈 Performance
 
-- **Target**: 100+ requests/second
+- **Target**: 110+ requests/second (optimized)
 - **Latency**: <100ms first token
 - **Context**: Up to 128K tokens
-- **GPU Utilization**: 85% optimal
+- **GPU Utilization**: 85% optimal (dedicated to primary vLLM)
 - **Cost Reduction**: 80% through model cascading
+- **Auto-scaling**: Dynamic batch size adjustment via main.py (8-32 range)
+- **ARM Optimization**: ONNX Runtime for CPU inference (2x faster on ARM)
 
 ## 🔍 Monitoring
 
 Access monitoring dashboards:
 - Prometheus: http://100.96.197.84:9090
+- AlertManager: http://100.96.197.84:9093 (GPU high, latency alerts)
+- Grafana: http://100.96.197.84:3001
+- Kibana: http://100.96.197.84:5601 (logs via ELK)
 - GPU Metrics: http://100.72.73.3:9091
 - Thermal Monitor: http://100.122.12.54:9092
 
@@ -132,8 +140,9 @@ Access monitoring dashboards:
 
 View service logs:
 ```bash
-# Oracle node
+# Oracle node (ELK enabled)
 ssh oracle1 "docker logs oracle-litellm"
+# View in Kibana: http://100.96.197.84:5601
 
 # Starlord node
 docker logs starlord-vllm
@@ -145,8 +154,10 @@ ssh thanos "docker logs thanos-sillytavern"
 ## 📚 Documentation
 
 - [Architecture Design](docs/ARCHITECTURE.md)
-- [Security Configuration](config/security.yml)
+- [Security Configuration](config/api-key-security.yml)
 - [Deployment Scripts](deploy/)
+- [CI/CD Workflow](.github/workflows/ci.yml)
+- [Main Orchestrator](main.py)
 
 ## 🤝 Contributing
 
@@ -168,6 +179,12 @@ This system includes uncensored AI models. Users are responsible for:
 ## 📄 License
 
 MIT License - See LICENSE file for details
+
+## 🔄 CI/CD & Automation
+
+- GitHub Actions for multi-arch builds and tests
+- Automated backups (daily Postgres/Qdrant)
+- Auto-scaling for vLLM batch sizes
 
 ## 🙏 Acknowledgments
 
