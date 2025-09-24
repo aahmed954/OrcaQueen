@@ -64,6 +64,10 @@ validate_node_hardware() {
             echo "GPU_MEMORY=none"
         fi
         echo "DISK_AVAILABLE=\"$(df -h / | awk "NR==2 {print \$4}")\""
+        # Check dedicated storage on Starlord
+        if [[ "'$node_name'" == "Starlord" ]] && mountpoint -q /mnt/rag-storage 2>/dev/null; then
+            echo "DEDICATED_STORAGE=\"$(df -h /mnt/rag-storage | awk "NR==2 {print \$2 \" total, \" \$4 \" available\"}")\""
+        fi
     ' 2>/dev/null || echo "SSH_FAILED=true")
 
     if [[ $hw_info == *"SSH_FAILED=true"* ]]; then
@@ -92,6 +96,11 @@ validate_node_hardware() {
 
     echo -e "  CPU Cores: $CPU_CORES"
     echo -e "  Disk Available: $DISK_AVAILABLE"
+    
+    # Show dedicated storage info if available
+    if [[ -n "${DEDICATED_STORAGE:-}" ]]; then
+        echo -e "  Dedicated Storage (/mnt/rag-storage): $DEDICATED_STORAGE"
+    fi
 
     return 0
 }

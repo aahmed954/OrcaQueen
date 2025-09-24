@@ -46,7 +46,7 @@ litellm_settings:
     password: ${REDIS_PASSWORD}
     db: 0
     ttl: 3600
-    namespace: litellm_cache
+    namespace: aiswarm_queue
     # ARM64 optimized connection pool
     connection_pool_kwargs:
       max_connections: 50
@@ -63,6 +63,8 @@ litellm_settings:
   cache_kwargs:
     mode: "sliding_window"
     ttl: 3600
+    namespace: aiswarm_queue
+    namespace: aiswarm_queue
 
   # Budget Management
   max_budget: 100

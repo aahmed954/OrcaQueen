@@ -39,7 +39,7 @@ services:
       railway.app/healthcheck-path: /health
       railway.app/healthcheck-timeout: 30
 
-  # Railway Service 2: Additional LiteLLM Gateway (Load Balancing)
+  #Railway Service 2: Additional LiteLLM Gateway (Load Balancing)
   railway-litellm-lb:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: railway-litellm-lb
@@ -47,12 +47,12 @@ services:
     environment:
       PORT: 4000
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@oracle-postgres.railway.internal:5432/litellm
-      REDIS_HOST: railway-redis.railway.internal
-      REDIS_PORT: 6379
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@postgres-standby:5432/litellm?replica=true  # Read replica
+      PRIMARY_DB_URL: postgresql://litellm:${POSTGRES_PASSWORD}@oracle-postgres.railway.internal:5432/litellm  # For writes
+      REDIS_URL: sentinel://default:redis_master_pass_2025@redis-sentinel-railway:26379/0?sentinel=yes&sentinel_master=aiswarm-master
       STORE_MODEL_IN_DB: true
       LITELLM_MODE: PRODUCTION
-      # Railway specific
+      #Railway specific
       RAILWAY_SERVICE_NAME: litellm-lb
       # Model endpoints
       STARLORD_VLLM_URL: http://100.72.73.3:8000/v1
@@ -67,35 +67,137 @@ services:
       railway.app/service: litellm-lb
       railway.app/healthcheck-path: /health
       railway.app/domains: ai-swarm-gateway.up.railway.app
+    depends_on:
+      - redis-slave
+      - redis-sentinel-railway
+      - postgres-standby
 
-  # Railway Service 3: Redis Cache Cluster
-  railway-redis:
+  #Railway Service 3: Redis Slave and Sentinel for HA
+  redis-slave:
     image: redis:7-alpine
-    container_name: railway-redis
+    container_name: railway-redis-slave
     restart: always
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-    command: >
-      redis-server
-      --requirepass ${REDIS_PASSWORD}
-      --appendonly yes
-      --maxmemory 8gb
-      --maxmemory-policy allkeys-lru
-      --save 900 1
-      --save 300 10
-      --save 60 10000
+    command: redis-server /etc/redis/redis.conf
     volumes:
       - railway-redis-data:/data
+      - ./config/redis-slave.conf:/etc/redis/redis.conf
+    environment:
+      ORACLE_REDIS_IP: ${ORACLE_REDIS_IP}  # External IP of Oracle Redis
     deploy:
       resources:
         limits:
           memory: 8G
           cpus: '4'
     labels:
-      railway.app/service: redis-cache
+      railway.app/service: redis-slave
       railway.app/volume: railway-redis-data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_master_pass_2025", "info replication | grep role"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # Railway Service 4: Web Scraping & Research Worker
+  redis-sentinel-railway:
+    image: redis:7-alpine
+    container_name: railway-redis-sentinel
+    restart: always
+    command: redis-sentinel /etc/redis/sentinel.conf
+    volumes:
+      - ./config/sentinel.conf:/etc/redis/sentinel.conf
+    environment:
+      ORACLE_REDIS_IP: ${ORACLE_REDIS_IP}
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1'
+    labels:
+      railway.app/service: redis-sentinel
+    healthcheck:
+      test: ["CMD", "redis-cli", "--sentinel", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis-slave
+
+  redis-exporter-railway:
+    image: prometheuscommunity/redis-exporter:latest
+    container_name: railway-redis-exporter
+    restart: always
+    environment:
+      REDIS_ADDR: "redis-slave:6379"
+      REDIS_PASSWORD: "redis_master_pass_2025"
+    ports:
+      - "9121:9121"
+    labels:
+      railway.app/service: redis-exporter
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis-slave
+
+  redis-exporter-railway:
+    image: prometheuscommunity/redis-exporter:latest
+    container_name: railway-redis-exporter
+    restart: always
+    environment:
+      REDIS_ADDR: "redis-slave:6379"
+      REDIS_PASSWORD: "redis_master_pass_2025"
+    ports:
+      - "9121:9121"
+    labels:
+      railway.app/service: redis-exporter
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis-slave
+
+  redis-exporter-railway:
+    image: prometheuscommunity/redis-exporter:latest
+    container_name: railway-redis-exporter
+    restart: always
+    environment:
+      REDIS_ADDR: "redis-slave:6379"
+      REDIS_PASSWORD: "redis_master_pass_2025"
+    ports:
+      - "9121:9121"
+    labels:
+      railway.app/service: redis-exporter
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis-slave
+
+  redis-exporter-railway:
+    image: prometheuscommunity/redis-exporter:latest
+    container_name: railway-redis-exporter
+    restart: always
+    environment:
+      REDIS_ADDR: "redis-slave:6379"
+      REDIS_PASSWORD: "redis_master_pass_2025"
+    ports:
+      - "9121:9121"
+    labels:
+      railway.app/service: redis-exporter
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9121/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - redis-slave
+
+  #Railway Service 4: Web Scraping & Research Worker
   railway-research-worker:
     build:
       context: ../services/research-worker
@@ -115,7 +217,7 @@ services:
       MAX_SEARCH_RESULTS: 20
       ENABLE_CACHING: true
       CACHE_TTL: 3600
-      # Railway specific
+      #Railway specific
       RAILWAY_SERVICE_NAME: research-worker
     deploy:
       resources:
@@ -127,7 +229,7 @@ services:
       railway.app/healthcheck-path: /health
       railway.app/domains: research.ai-swarm.up.railway.app
 
-  # Railway Service 5: Cost Analytics Dashboard
+  #Railway Service 5: Cost Analytics Dashboard
   railway-analytics:
     image: grafana/grafana:latest
     container_name: railway-analytics
@@ -150,13 +252,48 @@ services:
       railway.app/domains: analytics.ai-swarm.up.railway.app
       railway.app/volume: railway-grafana-data
 
+  # PostgreSQL Standby for HA Replication from Oracle Primary
+  postgres-standby:
+    image: postgres:15-alpine
+    container_name: railway-postgres-standby
+    restart: always
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PRIMARY_CONNINFO: "host=oracle-postgres.railway.internal port=5432 user=replicator password=rep_secure_pass_2025 dbname=litellm application_name=railway_standby"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - railway-postgres-standby-data:/var/lib/postgresql/data
+      - ./config/postgresql-arm64.conf:/var/lib/postgresql/data/postgresql.conf
+      - ./config/pg_hba.conf:/var/lib/postgresql/data/pg_hba.conf
+    command: >
+      postgres
+      -c config_file=/var/lib/postgresql/data/postgresql.conf
+      -c hba_file=/var/lib/postgresql/data/pg_hba.conf
+      -c primary_conninfo='${PRIMARY_CONNINFO}'
+      -c recovery_target_timeline='latest'
+      -c hot_standby=on
+    labels:
+      railway.app/service: postgres-standby
+      railway.app/volume: railway-postgres-standby-data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm && psql -U litellm -d litellm -c 'SELECT pg_is_in_recovery();' | grep -q 't'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      - railway-litellm-lb  # Ensure primary access via network
+
 volumes:
   railway-redis-data:
     driver: local
   railway-grafana-data:
     driver: local
+  railway-postgres-standby-data:
+    driver: local
 
-# Railway Deployment Notes:
+#Railway Deployment Notes:
 # 1. Each service gets its own Railway service for independent scaling
 # 2. Railway provides automatic HTTPS endpoints
 # 3. Internal networking via *.railway.internal domains
