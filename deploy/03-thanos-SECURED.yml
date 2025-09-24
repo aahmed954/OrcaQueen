@@ -5,7 +5,7 @@
 version: '3.8'
 
 services:
-  # SillyTavern - Primary chat interface (secured)
+  # SillyTavern - Primary chat interface (Latest version)
   sillytavern:
     image: ghcr.io/sillytavern/sillytavern:latest
     container_name: thanos-sillytavern

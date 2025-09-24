@@ -1,0 +1,299 @@
+# ARM64 Test Deployment for Open WebUI Pipelines
+# Minimal configuration for Oracle Cloud ARM64 compatibility testing
+# Deploy to: 100.96.197.84
+
+version: '3.8'
+
+services:
+  # PostgreSQL - ARM64 compatible lightweight config
+  postgres:
+    image: arm64v8/postgres:15-alpine
+    container_name: test-postgres
+    restart: unless-stopped
+    user: "postgres:postgres"
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_pg_pass_2024}
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Redis - ARM64 compatible cache
+  redis:
+    image: arm64v8/redis:7-alpine
+    container_name: test-redis
+    restart: unless-stopped
+    user: "redis:redis"
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-secure_redis_pass_2024}
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD:-secure_redis_pass_2024}", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  # LiteLLM Gateway - ARM64 compatible
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    platform: linux/arm64
+    container_name: test-litellm
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "4000:4000"
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-test-key-2024}
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD:-secure_pg_pass_2024}@postgres:5432/litellm
+      REDIS_URL: redis://:${REDIS_PASSWORD:-secure_redis_pass_2024}@redis:6379
+      LITELLM_LOG_LEVEL: INFO
+      LITELLM_CACHE: redis
+      LITELLM_PORT: 4000
+      # ARM64 optimizations
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      PIP_NO_CACHE_DIR: 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Open WebUI Pipelines - ARM64 Compatibility Test
+  pipelines:
+    image: ghcr.io/open-webui/pipelines:main
+    platform: linux/arm64
+    container_name: test-pipelines
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "9099:9099"
+    environment:
+      # Core configuration
+      PIPELINES_PORT: 9099
+      PIPELINES_OPENAI_API_BASE_URL: http://litellm:4000/v1
+      PIPELINES_OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-test-key-2024}
+
+      # ARM64 optimizations and stability fixes
+      NODE_ENV: production
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      PIP_NO_CACHE_DIR: 1
+      PIP_DISABLE_PIP_VERSION_CHECK: 1
+
+      # Memory and performance tuning for ARM64
+      MALLOC_TRIM_THRESHOLD: 128000
+      PYTHONHASHSEED: 0
+
+      # Torch CPU-only for ARM64 stability
+      TORCH_DEVICE: cpu
+      OMP_NUM_THREADS: 2
+
+      # Debugging and logging
+      PIPELINES_DEBUG: false
+      PIPELINES_LOG_LEVEL: INFO
+    volumes:
+      - pipelines_data:/app/data
+      - ./pipelines:/app/pipelines:ro
+    depends_on:
+      litellm:
+        condition: service_healthy
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9099/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 120s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  # Alternative: Stable Pipelines Version (fallback)
+  pipelines-stable:
+    image: ghcr.io/open-webui/pipelines:v0.5.8
+    platform: linux/arm64
+    container_name: test-pipelines-stable
+    restart: "no"  # Manual start only
+    user: "1000:1000"
+    ports:
+      - "9098:9099"  # Different port to avoid conflicts
+    environment:
+      PIPELINES_PORT: 9099
+      PIPELINES_OPENAI_API_BASE_URL: http://litellm:4000/v1
+      PIPELINES_OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-test-key-2024}
+      NODE_ENV: production
+      PIP_NO_CACHE_DIR: 1
+    volumes:
+      - pipelines_stable_data:/app/data
+    depends_on:
+      litellm:
+        condition: service_healthy
+    networks:
+      - test-network
+    profiles:
+      - fallback  # Only start when explicitly requested
+
+  # Open WebUI - ARM64 compatible with Pipelines integration
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    platform: linux/arm64
+    container_name: test-open-webui
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "3000:8080"
+    environment:
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-openwebui-secret-key-2024}
+
+      # LiteLLM backend integration
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-test-key-2024}
+
+      # Pipelines integration
+      WEBUI_DEFAULT_BACKEND_URL: http://pipelines:9099
+      WEBUI_AUTO_IMPORT_BACKEND: true
+
+      # Configuration
+      ENABLE_OLLAMA_API: false
+      ENABLE_OPENAI_API: true
+      ENABLE_SIGNUP: false
+      ENABLE_COMMUNITY_SHARING: false
+      WEBUI_AUTH: true
+      DEFAULT_USER_ROLE: user
+      ADMIN_EMAIL: admin@test.local
+
+      # ARM64 optimizations
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+    volumes:
+      - openwebui_data:/app/backend/data
+    depends_on:
+      litellm:
+        condition: service_healthy
+      pipelines:
+        condition: service_healthy
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Lightweight monitoring for ARM64 testing
+  monitoring:
+    image: arm64v8/alpine:latest
+    container_name: test-monitoring
+    restart: "no"
+    command: >
+      sh -c "
+        apk add --no-cache curl jq &&
+        while true; do
+          echo '=== ARM64 Service Health Check ===' &&
+          echo 'LiteLLM:' &&
+          curl -sf http://litellm:4000/health | jq . || echo 'FAILED' &&
+          echo 'Pipelines:' &&
+          curl -sf http://pipelines:9099/health | jq . || echo 'FAILED' &&
+          echo 'Open WebUI:' &&
+          curl -sf http://open-webui:8080/health | jq . || echo 'FAILED' &&
+          echo '========================' &&
+          sleep 60
+        done
+      "
+    networks:
+      - test-network
+    depends_on:
+      - litellm
+      - pipelines
+      - open-webui
+    profiles:
+      - monitoring  # Start with: docker-compose --profile monitoring up
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pipelines_data:
+    driver: local
+  pipelines_stable_data:
+    driver: local
+  openwebui_data:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+# Usage instructions:
+# 1. Basic test: docker-compose -f arm64-deployment-test.yml up -d
+# 2. With monitoring: docker-compose -f arm64-deployment-test.yml --profile monitoring up -d
+# 3. Use stable fallback: docker-compose -f arm64-deployment-test.yml --profile fallback up pipelines-stable -d
+# 4. Health check: docker-compose -f arm64-deployment-test.yml ps
+# 5. Logs: docker-compose -f arm64-deployment-test.yml logs pipelines

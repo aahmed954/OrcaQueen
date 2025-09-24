@@ -1,0 +1,69 @@
+# ARM64 DEPLOYMENT READY - AI SWARM ORACLE NODE
+version: '3.8'
+
+services:
+  # VERIFIED ARM64 COMPATIBLE SERVICES
+  postgres:
+    image: postgres:15-alpine
+    platform: linux/arm64
+    container_name: oracle-postgres-arm64
+    restart: always
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - aiswarm
+
+  redis:
+    image: redis:7-alpine  
+    platform: linux/arm64
+    container_name: oracle-redis-arm64
+    restart: always
+    volumes:
+      - redis_data:/data
+    networks:
+      - aiswarm
+
+  # CPU-ONLY INFERENCE (ARM64 COMPATIBLE)
+  cpu-inference:
+    build:
+      context: ../scripts
+      dockerfile_inline: |
+        FROM python:3.11-slim
+        WORKDIR /app
+        COPY cpu_inference_server.py .
+        RUN pip install flask transformers torch
+        EXPOSE 8000
+        CMD ["python", "cpu_inference_server.py"]
+    platform: linux/arm64
+    container_name: oracle-inference-arm64
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=microsoft/DialoGPT-small
+      - DEVICE=cpu
+    networks:
+      - aiswarm
+
+  # MONITORING (ARM64 COMPATIBLE)
+  monitoring:
+    image: prom/node-exporter:latest
+    platform: linux/arm64
+    container_name: oracle-monitor-arm64
+    restart: always
+    ports:
+      - "9100:9100"
+    networks:
+      - aiswarm
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  aiswarm:
+    driver: bridge

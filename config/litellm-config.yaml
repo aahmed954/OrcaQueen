@@ -1,0 +1,315 @@
+# LiteLLM Configuration - ARM64 Oracle Cloud Optimized
+# Optimized for 4 ARM64 cores, 24GB RAM on Oracle Cloud Free Tier
+
+general_settings:
+  master_key: ${LITELLM_MASTER_KEY}
+  database_url: postgresql://litellm:${POSTGRES_PASSWORD}@postgres:5432/litellm
+  redis_url: redis://:${REDIS_PASSWORD}@redis:6379
+
+  # Request Processing
+  request_timeout: 600
+  stream_timeout: 600
+  max_retries: 3
+  num_retries: 3
+  retry_after: 5
+
+  # Fallback and Error Handling
+  fallback_on_errors: true
+  allowed_fails: 3
+  cooldown_time: 60
+
+  # Alerting
+  alerting_threshold: 10
+  alert_types:
+    - budget_alerts
+    - spend_reports
+    - failed_tracking_spend
+    - hanging_request_alerts
+    - daily_reports
+    - weekly_reports
+    - monthly_reports
+    - budget_alerts
+
+  # Proxy Settings
+  proxy_budget_rescheduler_min_time: 60
+  proxy_budget_rescheduler_max_time: 84600
+  proxy_batch_write_at: 10
+  disable_spend_logs: false
+
+litellm_settings:
+  # Caching Configuration
+  cache: true
+  cache_params:
+    type: redis
+    host: redis
+    port: 6379
+    password: ${REDIS_PASSWORD}
+    db: 0
+    ttl: 3600
+    namespace: litellm_cache
+    # ARM64 optimized connection pool
+    connection_pool_kwargs:
+      max_connections: 50
+      health_check_interval: 30
+      socket_keepalive: true
+      socket_connect_timeout: 5
+      socket_keepalive_options:
+        TCP_KEEPIDLE: 120
+        TCP_KEEPINTVL: 30
+        TCP_KEEPCNT: 3
+
+  # Response Caching
+  cache_responses: true
+  cache_kwargs:
+    mode: "sliding_window"
+    ttl: 3600
+
+  # Budget Management
+  max_budget: 100
+  budget_duration: 30d
+
+  # Rate Limiting
+  max_parallel_requests: 100
+  max_user_parallel_requests: 10
+
+  # Logging
+  set_verbose: false
+  json_logs: true
+  log_raw_request_response: false
+
+  # Callbacks for monitoring
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+
+  # Service Level Settings
+  service_callback: ["prometheus_system"]
+
+router_settings:
+  # Routing Strategy - optimized for ARM64
+  routing_strategy: usage-based-routing-v2
+
+  # Model Management
+  enable_pre_call_checks: true
+  allowed_fails: 3
+  cooldown_time: 60
+  num_retries: 3
+  timeout: 600
+  max_retries: 3
+  retry_after: 5
+
+  # Load Balancing
+  routing_strategy_args:
+    ttl: 3600
+    lowest_latency_buffer: 0.3
+    max_latency_allowed: 60
+
+  # Context Window Fallbacks
+  context_window_fallbacks:
+    - match: "context_window_exceeded"
+      fallback_model: "gpt-3.5-turbo-16k"
+    - match: "rate_limit_exceeded"
+      fallback_model: "claude-instant-1.2"
+
+  # Model Aliases
+  model_alias:
+    "gpt-4": "gpt-4-1106-preview"
+    "claude": "claude-3-opus-20240229"
+    "gemini": "gemini-pro"
+
+model_list:
+  # OpenAI Models
+  - model_name: gpt-4
+    litellm_params:
+      model: gpt-4-1106-preview
+      api_key: ${OPENAI_API_KEY}
+      max_tokens: 4096
+      temperature: 0.7
+      stream: true
+      stream_options:
+        include_usage: true
+    model_info:
+      mode: chat
+      supports_function_calling: true
+      supports_vision: true
+
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: gpt-3.5-turbo-1106
+      api_key: ${OPENAI_API_KEY}
+      max_tokens: 4096
+    model_info:
+      mode: chat
+      supports_function_calling: true
+
+  - model_name: gpt-3.5-turbo-16k
+    litellm_params:
+      model: gpt-3.5-turbo-16k
+      api_key: ${OPENAI_API_KEY}
+      max_tokens: 16384
+    model_info:
+      mode: chat
+      context_window: 16384
+
+  # Anthropic Models
+  - model_name: claude-3-opus
+    litellm_params:
+      model: claude-3-opus-20240229
+      api_key: ${ANTHROPIC_API_KEY}
+      max_tokens: 4096
+    model_info:
+      mode: chat
+      supports_function_calling: true
+      supports_vision: true
+
+  - model_name: claude-3-sonnet
+    litellm_params:
+      model: claude-3-sonnet-20240229
+      api_key: ${ANTHROPIC_API_KEY}
+      max_tokens: 4096
+    model_info:
+      mode: chat
+      supports_function_calling: true
+
+  - model_name: claude-instant
+    litellm_params:
+      model: claude-instant-1.2
+      api_key: ${ANTHROPIC_API_KEY}
+      max_tokens: 4096
+    model_info:
+      mode: chat
+
+  # Google Models
+  - model_name: gemini-pro
+    litellm_params:
+      model: gemini-pro
+      api_key: ${GOOGLE_API_KEY}
+      max_tokens: 2048
+    model_info:
+      mode: chat
+      supports_function_calling: true
+
+  - model_name: gemini-pro-vision
+    litellm_params:
+      model: gemini-pro-vision
+      api_key: ${GOOGLE_API_KEY}
+      max_tokens: 2048
+    model_info:
+      mode: chat
+      supports_vision: true
+
+  # Cohere Models
+  - model_name: command
+    litellm_params:
+      model: command
+      api_key: ${COHERE_API_KEY}
+      max_tokens: 4096
+    model_info:
+      mode: chat
+
+  # Embedding Models
+  - model_name: text-embedding-ada-002
+    litellm_params:
+      model: text-embedding-ada-002
+      api_key: ${OPENAI_API_KEY}
+    model_info:
+      mode: embedding
+      embedding_dims: 1536
+
+  - model_name: text-embedding-3-small
+    litellm_params:
+      model: text-embedding-3-small
+      api_key: ${OPENAI_API_KEY}
+    model_info:
+      mode: embedding
+      embedding_dims: 1536
+
+  - model_name: text-embedding-3-large
+    litellm_params:
+      model: text-embedding-3-large
+      api_key: ${OPENAI_API_KEY}
+    model_info:
+      mode: embedding
+      embedding_dims: 3072
+
+# Budget Configuration
+budgets:
+  # Global Budget
+  max_budget: 100
+  budget_duration: 30d
+
+  # Provider Budgets
+  providers:
+    openai:
+      max_budget: 40
+      budget_duration: 30d
+    anthropic:
+      max_budget: 30
+      budget_duration: 30d
+    google:
+      max_budget: 20
+      budget_duration: 30d
+    cohere:
+      max_budget: 10
+      budget_duration: 30d
+
+  # Model-specific Budgets
+  models:
+    gpt-4:
+      max_budget: 20
+      budget_duration: 30d
+    gpt-3.5-turbo:
+      max_budget: 10
+      budget_duration: 30d
+    claude-3-opus:
+      max_budget: 15
+      budget_duration: 30d
+    claude-3-sonnet:
+      max_budget: 10
+      budget_duration: 30d
+    gemini-pro:
+      max_budget: 10
+      budget_duration: 30d
+
+  # Tag-based Budgets
+  tags:
+    production:
+      max_budget: 50
+      budget_duration: 30d
+    development:
+      max_budget: 20
+      budget_duration: 30d
+    testing:
+      max_budget: 10
+      budget_duration: 30d
+
+# Environment-specific Settings for Oracle Cloud
+environment_variables:
+  # Oracle Cloud Specific
+  ORACLE_REGION: ${ORACLE_REGION:-us-ashburn-1}
+  ORACLE_COMPARTMENT_ID: ${ORACLE_COMPARTMENT_ID}
+
+  # ARM64 Optimizations
+  GOMAXPROCS: "4"
+  OMP_NUM_THREADS: "4"
+  MKL_NUM_THREADS: "4"
+  NUMEXPR_NUM_THREADS: "4"
+
+  # Network Optimizations
+  LISTEN_PORT: 4000
+  LISTEN_HOST: 0.0.0.0
+
+  # Database Pool Settings
+  DATABASE_POOL_SIZE: 20
+  DATABASE_MAX_OVERFLOW: 10
+  DATABASE_POOL_TIMEOUT: 30
+  DATABASE_POOL_RECYCLE: 3600
+
+  # Redis Pool Settings
+  REDIS_POOL_SIZE: 50
+  REDIS_POOL_TIMEOUT: 30
+
+  # Worker Settings
+  WORKERS: 4
+  THREADS: 2
+  WORKER_CLASS: uvicorn.workers.UvicornWorker
+  WORKER_CONNECTIONS: 1000

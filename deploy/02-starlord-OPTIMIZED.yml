@@ -5,9 +5,9 @@
 version: '3.8'
 
 services:
-  # vLLM - High-performance inference server (Optimized for 64GB RAM)
+  # vLLM - High-performance inference server (Latest version)
   vllm:
-    image: vllm/vllm-openai:v0.6.0  # Latest version with FP8 support
+    image: vllm/vllm-openai:latest  # Use latest for best compatibility
     container_name: starlord-vllm
     restart: always
     ports:

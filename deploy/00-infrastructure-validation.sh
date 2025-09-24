@@ -54,16 +54,16 @@ validate_node_hardware() {
     # SSH command to gather hardware info
     local hw_info=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no $node_ip '
         echo "CPU_CORES=$(nproc)"
-        echo "RAM_TOTAL=$(free -h | grep Mem | awk "{print \$2}")"
-        echo "RAM_AVAILABLE=$(free -h | grep Mem | awk "{print \$7}")"
+        echo "RAM_TOTAL=\"$(free -h | grep Mem | awk "{print \$2}")\""
+        echo "RAM_AVAILABLE=\"$(free -h | grep Mem | awk "{print \$7}")\""
         if command -v nvidia-smi &> /dev/null; then
-            echo "GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1)"
-            echo "GPU_MEMORY=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader | head -n1)"
+            echo "GPU_NAME=\"$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1)\""
+            echo "GPU_MEMORY=\"$(nvidia-smi --query-gpu=memory.total --format=csv,noheader | head -n1)\""
         else
             echo "GPU_NAME=none"
             echo "GPU_MEMORY=none"
         fi
-        echo "DISK_AVAILABLE=$(df -h / | awk "NR==2 {print \$4}")"
+        echo "DISK_AVAILABLE=\"$(df -h / | awk "NR==2 {print \$4}")\""
     ' 2>/dev/null || echo "SSH_FAILED=true")
 
     if [[ $hw_info == *"SSH_FAILED=true"* ]]; then
@@ -139,11 +139,12 @@ check_existing_services() {
 
         # Special check for Qdrant
         if [[ "$expected_service" == "Qdrant" ]]; then
-            local qdrant_health=$(curl -s http://$node_ip:$service_port/health 2>/dev/null || echo "unreachable")
-            if [[ $qdrant_health == *"ok"* ]] || [[ $qdrant_health == *"true"* ]]; then
-                echo -e "${GREEN}[✓]${NC} Qdrant health check passed"
+            # Simplified health check: curl -f succeeds on HTTP 200-299
+            if curl -f -s --max-time 5 http://$node_ip:$service_port/health > /dev/null 2>&1; then
+                echo -e "${GREEN}[✓]${NC} Qdrant health check passed (HTTP 200 OK)"
             else
-                echo -e "${YELLOW}[!]${NC} Qdrant health check returned: $qdrant_health"
+                echo -e "${YELLOW}[!]${NC} Qdrant health check failed"
+                VALIDATION_PASSED=false
             fi
         fi
     else

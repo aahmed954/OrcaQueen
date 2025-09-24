@@ -1,0 +1,122 @@
+# Prometheus Configuration - ARM64 Oracle Cloud Optimized
+# Lightweight monitoring for LiteLLM Gateway on Oracle Free Tier
+
+global:
+  scrape_interval: 30s          # Reduce frequency for ARM64 resource efficiency
+  evaluation_interval: 30s
+  scrape_timeout: 10s
+  external_labels:
+    monitor: 'litellm-oracle-arm64'
+    environment: 'production'
+    region: 'oracle-us-ashburn-1'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+          # - 'alertmanager:9093'
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - "alerts/*.yml"
+  # - "rules/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    metrics_path: /metrics
+    scrape_interval: 60s        # Less frequent for self-monitoring
+
+  # LiteLLM Gateway monitoring
+  - job_name: 'litellm'
+    static_configs:
+      - targets: ['litellm:4000']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    metric_relabel_configs:
+      # Drop high-cardinality metrics to save memory
+      - source_labels: [__name__]
+        regex: 'python_gc_.*'
+        action: drop
+      - source_labels: [__name__]
+        regex: 'python_info.*'
+        action: drop
+
+  # HAProxy monitoring
+  - job_name: 'haproxy'
+    static_configs:
+      - targets: ['haproxy:8404']
+    metrics_path: /metrics
+    scrape_interval: 30s
+
+  # PostgreSQL monitoring (via postgres_exporter if deployed)
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres:9187']
+    metrics_path: /metrics
+    scrape_interval: 60s        # Database metrics change slowly
+
+  # Redis monitoring (via redis_exporter if deployed)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:9121']
+    metrics_path: /metrics
+    scrape_interval: 60s
+
+  # Node exporter for system metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 60s
+    metric_relabel_configs:
+      # Keep only essential system metrics
+      - source_labels: [__name__]
+        regex: 'node_(cpu_seconds_total|memory_MemTotal_bytes|memory_MemFree_bytes|memory_MemAvailable_bytes|filesystem_.*|disk_.*|network_.*|load1|load5|load15)'
+        action: keep
+
+  # Docker container metrics (via cAdvisor if deployed)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 60s
+    metric_relabel_configs:
+      # Keep only essential container metrics
+      - source_labels: [__name__]
+        regex: 'container_(cpu_usage_seconds_total|memory_usage_bytes|memory_working_set_bytes|network_.*_bytes_total)'
+        action: keep
+
+# Storage configuration optimized for ARM64 and limited disk
+storage:
+  tsdb:
+    path: /prometheus
+    retention:
+      time: 7d                  # Keep data for 7 days
+      size: 2GB                 # Maximum storage size
+    wal_compression: true       # Enable WAL compression
+    min_block_duration: 2h      # Larger blocks for ARM64 efficiency
+
+# Remote write configuration (optional - for external storage)
+# remote_write:
+#   - url: "https://prometheus-remote-storage.example.com/write"
+#     queue_config:
+#       capacity: 10000
+#       max_shards: 5
+#       min_shards: 1
+#       max_samples_per_send: 1000
+#       batch_send_deadline: 5s
+#       min_backoff: 30ms
+#       max_backoff: 100ms
+
+# Optimization settings for ARM64
+# These are set via command-line flags in docker-compose.yml:
+# --storage.tsdb.retention.time=7d
+# --storage.tsdb.retention.size=2GB
+# --web.enable-lifecycle
+# --web.enable-admin-api
+# --query.max-concurrency=10
+# --query.max-samples=1000000

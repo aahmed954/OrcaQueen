@@ -4,6 +4,43 @@
 
 set -euo pipefail
 
+# OS Detection Function
+detect_os() {
+  local host=$1
+  if [[ "$host" == "local" ]]; then
+    if source /etc/os-release 2>/dev/null; then
+      echo "Ubuntu $VERSION_ID ($VERSION_CODENAME)"
+    else
+      echo "Error: Local OS detection failed" >&2
+      exit 1
+    fi
+  else
+    local os_info=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no "root@$host" "source /etc/os-release && echo \"Ubuntu \$VERSION_ID (\$VERSION_CODENAME)\" 2>/dev/null" 2>/dev/null || echo "Error: Remote OS detection failed on $host")
+    echo "$os_info"
+  fi
+}
+
+# Branching based on OS
+handle_os_specific() {
+  local os_version=$1
+  local codename=$2
+  local command=$3
+  case "$os_version" in
+    "24.04")
+      # Noble-specific logic (e.g., apt repos, sysctl)
+      eval "$command noble"
+      ;;
+    "25.04")
+      # Plucky-specific logic (e.g., updated repos, cgroup v2)
+      eval "$command plucky"
+      ;;
+    *)
+      echo "Unsupported Ubuntu version: $os_version" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,7 +54,29 @@ PROJECT_ROOT=$(dirname "$(realpath "$0")")
 ORACLE_IP="100.96.197.84"
 STARLORD_IP="100.72.73.3"
 THANOS_IP="100.122.12.54"
+
+# Dry-run flag handling
+DRY_RUN=false
+if [[ "${1:-}" == "--dry-run" ]]; then
+  DRY_RUN=true
+  echo "Running in dry-run mode - commands will be echoed but not executed"
+  shift
+fi
+
 DEPLOYMENT_MODE="${1:-production}"  # production or development
+
+# Function to execute or echo command based on dry-run
+run_command() {
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "[DRY-RUN] $*"
+  else
+    eval "$*"
+  fi
+}
+
+# Detect local OS (Starlord)
+local_os=$(detect_os "local")
+echo "Local OS (Starlord): $local_os"
 
 echo -e "${BLUE}╔════════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${BLUE}║          AI-SWARM-MIAMI-2025 DEPLOYMENT ORCHESTRATOR          ║${NC}"
@@ -105,19 +164,23 @@ validate_infrastructure() {
 setup_network() {
     print_section "CONFIGURING NETWORK"
 
+    # OS-specific sysctl for IP forwarding
+    local_os_version=$(echo "$local_os" | cut -d' ' -f2)
+    handle_os_specific "$local_os_version" "$(echo "$local_os" | cut -d'(' -f2 | cut -d')' -f1)" "echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.conf > /dev/null && sudo sysctl -p > /dev/null"
+
     echo -e "${YELLOW}[→]${NC} Setting up Tailscale routing..."
 
-    # Enable IP forwarding
-    echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.conf > /dev/null
-    sudo sysctl -p > /dev/null
-
-    # Configure Tailscale subnet routing
+    # Configure Tailscale subnet routing (OS-agnostic, but log for 25.04 cgroup notes)
     sudo tailscale up --advertise-routes=172.20.0.0/24,172.21.0.0/24,172.22.0.0/24 \
         --accept-routes --accept-dns=false || true
 
-    # Create Docker networks
+    # Create Docker networks with OS-specific cgroup if needed
     echo -e "${YELLOW}[→]${NC} Creating Docker networks..."
-    docker network create aiswarm --subnet=172.21.0.0/24 2>/dev/null || true
+    if [[ "$local_os_version" == "25.04" ]]; then
+      docker network create --opt com.docker.network.driver.mtu=1500 aiswarm --subnet=172.21.0.0/24 2>/dev/null || true
+    else
+      docker network create aiswarm --subnet=172.21.0.0/24 2>/dev/null || true
+    fi
 
     echo -e "${GREEN}[✓]${NC} Network configuration complete"
 }
@@ -439,41 +502,45 @@ display_access_info() {
 
 # Main deployment flow
 main() {
-    echo -e "${YELLOW}Deployment Mode: $DEPLOYMENT_MODE${NC}"
+    echo -e "${YELLOW}Deployment Mode: $DEPLOYMENT_MODE${NC} (Dry-run: $DRY_RUN)"
     echo ""
 
     # Pre-flight checks
-    check_prerequisites
-    validate_infrastructure
+    run_command check_prerequisites
+    run_command validate_infrastructure
 
     # Network setup
-    setup_network
+    run_command setup_network
 
     # Security setup
     if [[ "$DEPLOYMENT_MODE" == "production" ]]; then
-        generate_secrets
+        run_command generate_secrets
     fi
 
     # Deploy services in order
-    deploy_oracle
-    deploy_starlord
-    deploy_thanos
+    run_command deploy_oracle
+    run_command deploy_starlord
+    run_command deploy_thanos
 
     # Configure routing
-    configure_litellm
+    run_command configure_litellm
 
     # Run tests
-    run_tests
+    run_command run_tests
 
     # Setup backups
-    backup_setup
+    run_command backup_setup
 
     # Display access info
-    display_access_info
+    run_command display_access_info
 
-    echo -e "\n${GREEN}[✓] AI-SWARM-MIAMI-2025 deployment completed successfully!${NC}"
-    echo -e "${CYAN}[i] To monitor logs: docker-compose logs -f [service-name]${NC}"
-    echo -e "${CYAN}[i] To stop services: docker-compose down${NC}"
+    if [[ "$DRY_RUN" == false ]]; then
+      echo -e "\n${GREEN}[✓] AI-SWARM-MIAMI-2025 deployment completed successfully!${NC}"
+      echo -e "${CYAN}[i] To monitor logs: docker-compose logs -f [service-name]${NC}"
+      echo -e "${CYAN}[i] To stop services: docker-compose down${NC}"
+    else
+      echo -e "\n${GREEN}[✓] Dry-run completed - no changes made.${NC}"
+    fi
 }
 
 # Run main deployment
