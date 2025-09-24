@@ -64,36 +64,36 @@ test_image_arm64() {
         COMPATIBLE_IMAGES+=("$service_name:$image")
         
         # Test if image can start (OS-adjusted timeout)
-        local timeout_val=30
+        local timeout_val=60  # Increased base timeout for service startup
         if [[ "$oracle_version" == "25.04" ]]; then
-          timeout_val=45  # Longer for potential new kernel overhead
+          timeout_val=90  # Longer for potential new kernel overhead
         fi
         
         local run_test=$(ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no oracle1 "
-            # Try different startup methods based on image type
+            # Try different startup methods based on image type, matching YAML configs
             if [[ '$image' == *'python'* ]]; then
-                timeout ${timeout_val}s docker run --rm '$image' python --version >/dev/null 2>&1 && echo 'python_ok'
+                timeout ${timeout_val}s docker run --rm --platform linux/arm64 '$image' python --version >/dev/null 2>&1 && echo 'python_ok'
             elif [[ '$image' == *'node'* ]]; then
-                timeout ${timeout_val}s docker run --rm '$image' node --version >/dev/null 2>&1 && echo 'node_ok'
+                timeout ${timeout_val}s docker run --rm --platform linux/arm64 '$image' node --version >/dev/null 2>&1 && echo 'node_ok'
             elif [[ '$image' == *'open-webui'* ]]; then
-                timeout 5s docker run --rm '$image' /bin/sh -c 'echo webui_test' >/dev/null 2>&1 && echo 'webui_ok'
+                # Open WebUI: Run with basic env, check health endpoint (port 8080)
+                timeout 60s docker run --rm --platform linux/arm64 -p 8080:8080 -e WEBUI_SECRET_KEY=dummy -e OLLAMA_BASE_URL=http://dummy:11434 '$image' & sleep 30 && curl -f http://localhost:8080/health >/dev/null 2>&1 && echo 'webui_ok' || echo 'webui_partial'
             elif [[ '$image' == *'pipelines'* ]]; then
-                # Pipelines is a service container - if it pulls, it works on ARM64
-                echo 'pipelines_ok'
+                # Pipelines: Run with env, check health (port 9099)
+                timeout 60s docker run --rm --platform linux/arm64 -p 9099:9099 -e PIPELINES_PORT=9099 -e PIPELINES_OPENAI_API_KEY=dummy '$image' & sleep 30 && curl -f http://localhost:9099/health >/dev/null 2>&1 && echo 'pipelines_ok' || echo 'pipelines_partial'
             elif [[ '$image' == *'tensorflow'* ]] || [[ '$image' == *'pytorch'* ]]; then
-                timeout 60s docker run --rm '$image' python -c 'import sys; print(\"Python OK\")' >/dev/null 2>&1 && echo 'ml_ok'
+                timeout 60s docker run --rm --platform linux/arm64 '$image' python -c 'import sys; print(\"Python OK\")' >/dev/null 2>&1 && echo 'ml_ok'
             elif [[ '$image' == *'prom/node-exporter'* ]]; then
-                # Node Exporter: Test service mode with basic flags (no incompatible CLI)
-                timeout 10s docker run --rm -p 9100:9100 '$image' --path.procfs=/host/proc --path.sysfs=/host/sys --web.listen-address=:9100 --no-web-config & sleep 5 && curl -f http://localhost:9100/metrics >/dev/null 2>&1 && echo 'exporter_ok' || echo 'exporter_partial'
+                # Node Exporter: Test with host mounts and basic flags matching YAML
+                timeout 60s docker run --rm --platform linux/arm64 -p 9100:9100 -v /proc:/host/proc:ro -v /sys:/host/sys:ro -v /:/rootfs:ro '$image' --path.procfs=/host/proc --path.sysfs=/host/sys --path.rootfs=/host --web.listen-address=0.0.0.0:9100 --collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/) & sleep 10 && curl -f http://localhost:9100/metrics >/dev/null 2>&1 && echo 'exporter_ok' || echo 'exporter_partial'
             elif [[ '$image' == *'litellm'* ]]; then
-                # LiteLLM: Test service mode with health check (no CLI --help)
-                timeout 10s docker run --rm -p 4000:4000 -e LITELLM_MASTER_KEY=dummy '$image' & sleep 5 && curl -f http://localhost:4000/health >/dev/null 2>&1 && echo 'litellm_ok' || echo 'litellm_partial'
+                # LiteLLM: Test with separate health port 4001, proper env matching YAML
+                timeout 60s docker run --rm --platform linux/arm64 -p 4000:4000 -p 4001:4001 -e SEPARATE_HEALTH_APP=1 -e SEPARATE_HEALTH_PORT=4001 -e LITELLM_MASTER_KEY=dummy -e LITELLM_LOG=INFO '$image' & sleep 30 && curl -f http://localhost:4001/health >/dev/null 2>&1 && echo 'litellm_ok' || echo 'litellm_partial'
             else
-                timeout ${timeout_val}s docker run --rm '$image' --help >/dev/null 2>&1 && echo 'help_ok' ||
-                timeout ${timeout_val}s docker run --rm '$image' -v >/dev/null 2>&1 && echo 'version_ok' ||
-                timeout ${timeout_val}s docker run --rm '$image' version >/dev/null 2>&1 && echo 'version_ok' ||
+                timeout ${timeout_val}s docker run --rm --platform linux/arm64 '$image' --help >/dev/null 2>&1 && echo 'help_ok' ||
+                timeout ${timeout_val}s docker run --rm --platform linux/arm64 '$image' -v >/dev/null 2>&1 && echo 'version_ok' ||
+                timeout ${timeout_val}s docker run --rm --platform linux/arm64 '$image' version >/dev/null 2>&1 && echo 'version_ok' ||
                 echo 'run_failed'
-            fi
         " 2>/dev/null)
         
         if [[ $run_test == *"ok"* ]]; then
@@ -103,8 +103,7 @@ test_image_arm64() {
         fi
         
         # Clean up any leftover containers and images on Oracle
-        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no oracle1 "docker rm -f \$(docker ps -aq) >/dev/null 2>&1 || true" || true
-        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no oracle1 "docker rmi '$image' >/dev/null 2>&1" || true
+        ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no oracle1 "docker rm -f \$(docker ps -aq --filter status=exited) >/dev/null 2>&1 || true; docker rmi '$image' >/dev/null 2>&1 || true" || true
         
         return 0
     else

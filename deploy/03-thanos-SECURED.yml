@@ -12,16 +12,16 @@ services:
     restart: always
     user: "1000:1000"  # Non-root user
     ports:
-      - "100.122.12.54:8080:8000"
+      - "8080:8000"
     environment:
       SILLYTAVERN_PORT: 8000
-      ENABLE_EXTENSIONS: true
+      ENABLE_EXTENSIONS: "true"
       DEFAULT_API_URL: http://100.96.197.84:4000/v1
       API_KEY: ${LITELLM_MASTER_KEY}
-      UNCENSORED_MODE: true
-      WHITELIST: true  # Enable IP whitelist
+      UNCENSORED_MODE: "true"
+      WHITELIST: "true"  # Enable IP whitelist
       WHITELIST_IPS: "100.96.197.84,100.72.73.3,100.122.12.54,127.0.0.1"
-      ENABLE_HTTPS: false  # TLS termination at HAProxy
+      ENABLE_HTTPS: "false"  # TLS termination at HAProxy
       SESSION_SECRET: ${SESSION_SECRET}
       JWT_SECRET: ${JWT_SECRET}
     volumes:
@@ -48,23 +48,17 @@ services:
     restart: always
     user: "1000:1000"  # Non-root user
     ports:
-      - "100.122.12.54:5100:5100"
+      - "5100:5100"
     environment:
       CUDA_VISIBLE_DEVICES: 0
       EXTRAS_PORT: 5100
       ENABLE_MODULES: caption,summarize,classify,tts,stt,sd
       API_KEY: ${LITELLM_MASTER_KEY}  # Require API key
       MAX_WORKERS: 4
+    runtime: nvidia
     volumes:
       - extras_data:/app/data
       - extras_models:/app/models
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - aiswarm
     healthcheck:
@@ -82,13 +76,13 @@ services:
   # GPT Researcher - Autonomous research agent
   gpt-researcher:
     build:
-      context: ./services/gpt-researcher
+      context: AI-SWARM-MIAMI-2025/services/gpt-researcher
       dockerfile: Dockerfile
     container_name: thanos-gpt-researcher
     restart: always
     user: "1000:1000"  # Non-root user
     ports:
-      - "100.122.12.54:8001:8080"
+      - "8001:8080"
     environment:
       OPENAI_API_BASE: http://100.96.197.84:4000/v1
       OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
@@ -101,7 +95,7 @@ services:
       MAX_ITERATIONS: 10
       MAX_SEARCH_RESULTS_PER_QUERY: 20
       DOC_PATH: /app/outputs
-      ENABLE_CACHING: true
+      ENABLE_CACHING: "true"
       CACHE_TTL: 3600
     volumes:
       - gpt_researcher_outputs:/app/outputs
@@ -125,7 +119,7 @@ services:
     container_name: thanos-vllm-backup
     restart: always
     ports:
-      - "100.122.12.54:8002:8000"
+      - "8002:8000"
     environment:
       CUDA_VISIBLE_DEVICES: 0
       VLLM_WORKER_MULTIPROC_METHOD: spawn
@@ -142,16 +136,10 @@ services:
       "--max-num-seqs", "8",
       "--max-num-batched-tokens", "4096"
     ]
+    runtime: nvidia
     volumes:
-      - /opt/models:/models:rw
+      - vllm_models:/models
       - model_cache:/root/.cache/huggingface:rw
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     networks:
       - aiswarm
     security_opt:
@@ -164,7 +152,7 @@ services:
   # Document Processor with encryption
   document-processor:
     build:
-      context: ./services/document-processor
+      context: AI-SWARM-MIAMI-2025/services/document-processor
       dockerfile: Dockerfile
     container_name: thanos-doc-processor
     restart: always
@@ -198,7 +186,7 @@ services:
   # RAG Pipeline with security
   rag-pipeline:
     build:
-      context: ./services/rag-pipeline
+      context: AI-SWARM-MIAMI-2025/services/rag-pipeline
       dockerfile: Dockerfile
     container_name: thanos-rag-pipeline
     restart: always
@@ -227,7 +215,7 @@ services:
     container_name: thanos-thermal-monitor
     restart: always
     ports:
-      - "100.122.12.54:9092:9092"
+      - "9092:9092"
     environment:
       PROMETHEUS_PORT: 9092
       ALERT_TEMP_GPU: 80  # Alert at 80°C
@@ -279,7 +267,7 @@ services:
               # CPU temperature
               try:
                   sensors_output = subprocess.check_output(['sensors', '-u'], text=True)
-                  for line in sensors_output.split('\\n'):
+                  for line in sensors_output.split('\n'):
                       if 'temp1_input' in line:
                           cpu_temp = float(line.split()[-1])
                           cpu_temperature.set(cpu_temp)
@@ -298,7 +286,7 @@ services:
 
                   # Alert to monitoring system
                   try:
-                      requests.post(f\"http://100.96.197.84:9090/api/v1/alerts\",
+                      requests.post(f"http://100.96.197.84:9090/api/v1/alerts",
                                   json={'alert': 'GPU_OVERHEAT', 'temp': temp})
                   except:
                       pass
@@ -314,13 +302,7 @@ services:
 
       python3 /monitor.py
       "
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    runtime: nvidia
     networks:
       - aiswarm
     security_opt:
@@ -334,7 +316,7 @@ services:
     container_name: thanos-node-exporter
     restart: always
     ports:
-      - "100.122.12.54:9100:9100"
+      - "9100:9100"
     command:
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
@@ -377,6 +359,8 @@ volumes:
   rag_logs:
     driver: local
   model_cache:
+    driver: local
+  vllm_models:
     driver: local
 
 networks:

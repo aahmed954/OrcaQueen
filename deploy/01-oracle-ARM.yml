@@ -430,33 +430,34 @@ services:
     cap_drop:
       - ALL
 
+aiswarm:
 volumes:
-postgres_data:
-  driver: local
-redis_data:
-  driver: local
-consul_data:
-  driver: local
-litellm_logs:
-  driver: local
-open_webui_data:
-  driver: local
-grafana_data:
-  driver: local
-prometheus_data:
-  driver: local
-vault_data:
-  driver: local
-pipelines_data:
-  driver: local
-cpu_inference_data:
-  driver: local
-elasticsearch_data:
-  driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  consul_data:
+    driver: local
+  litellm_logs:
+    driver: local
+  open_webui_data:
+    driver: local
+  grafana_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  vault_data:
+    driver: local
+  pipelines_data:
+    driver: local
+  cpu_inference_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
 
 networks:
-aiswarm:
-  driver: bridge
-  ipam:
+  aiswarm:
+    driver: bridge
+    ipam:
     config:
       - subnet: 172.20.0.0/24

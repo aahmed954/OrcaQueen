@@ -9,6 +9,7 @@
 The AI-SWARM-MIAMI-2025 deployment consists of a sophisticated 3-node architecture with strong automation capabilities but **CRITICAL ARM compatibility issues** that must be resolved before Oracle deployment.
 
 ### Deployment Architecture
+
 - **Oracle Node (ARM64)**: 100.96.197.84 - Orchestration Services
 - **Starlord Node (x86_64)**: 100.72.73.3 - High-Performance Inference (RTX 4090)
 - **Thanos Node (x86_64)**: 100.122.12.54 - Worker Services (RTX 3080)
@@ -19,6 +20,7 @@ The AI-SWARM-MIAMI-2025 deployment consists of a sophisticated 3-node architectu
 ## 1. ARM vs x86_64 Image Compatibility Analysis
 
 ### ✅ COMPATIBLE IMAGES (Oracle Ready)
+
 ```yaml
 Compatible_Services:
   postgres: "postgres:15-alpine"           # Multi-arch official
@@ -29,6 +31,7 @@ Compatible_Services:
 ```
 
 ### ❌ INCOMPATIBLE IMAGES (Require ARM64 Variants)
+
 ```yaml
 Critical_Issues:
   litellm: "ghcr.io/berriai/litellm:main-latest"
@@ -60,6 +63,7 @@ Critical_Issues:
 ### 🔧 ARM COMPATIBILITY FIXES REQUIRED
 
 **Immediate Actions:**
+
 1. Replace CUDA-dependent images with CPU-only variants for Oracle
 2. Test ARM compatibility for all GitHub Container Registry images
 3. Implement multi-arch image builds in CI/CD pipeline
@@ -70,11 +74,13 @@ Critical_Issues:
 ## 2. Container Registry Strategy
 
 ### Current Strategy Assessment
+
 - **Primary Registry**: Docker Hub (multi-arch support)
 - **Secondary**: GitHub Container Registry (ARM support varies)
 - **Weakness**: No ARM compatibility verification process
 
 ### Recommended Improvements
+
 ```yaml
 Registry_Strategy:
   Primary: "Docker Hub"
@@ -97,6 +103,7 @@ Build_Process:
 ## 3. Deployment Automation Assessment
 
 ### ✅ STRENGTHS
+
 - Comprehensive 3-node orchestration script (`deploy.sh`)
 - Infrastructure validation pre-deployment
 - Health check integration
@@ -104,6 +111,7 @@ Build_Process:
 - Secrets management framework
 
 ### ⚠️ CRITICAL GAPS
+
 ```yaml
 Missing_Components:
   CI_CD_Pipeline:
@@ -128,6 +136,7 @@ Missing_Components:
 ```
 
 ### Recommended CI/CD Pipeline
+
 ```yaml
 Pipeline_Stages:
   1_Code_Analysis:
@@ -156,6 +165,7 @@ Pipeline_Stages:
 ## 4. Health Check and Monitoring Configuration
 
 ### ✅ EXISTING MONITORING
+
 ```yaml
 Current_Monitoring:
   Health_Checks:
@@ -173,6 +183,7 @@ Current_Monitoring:
 ```
 
 ### ⚠️ MONITORING GAPS
+
 ```yaml
 Missing_Components:
   Centralized_Logging:
@@ -197,6 +208,7 @@ Missing_Components:
 ```
 
 ### Recommended Monitoring Stack
+
 ```yaml
 Monitoring_Architecture:
   Metrics: "Prometheus + Grafana"
@@ -218,11 +230,13 @@ Dashboards:
 ## 5. Rollback Procedures and Backup/Recovery
 
 ### ✅ CURRENT BACKUP STRATEGY
+
 - Docker volume persistence
 - Environment configuration backup
 - Model cache preservation
 
 ### ❌ CRITICAL DEFICIENCIES
+
 ```yaml
 Missing_Backup_Components:
   Database_Backups:
@@ -244,6 +258,7 @@ Missing_Backup_Components:
 ```
 
 ### Recommended Backup/Recovery Plan
+
 ```yaml
 Backup_Strategy:
   Schedule:
@@ -268,6 +283,7 @@ Backup_Strategy:
 ## 6. Critical Security Issues
 
 ### 🚨 IMMEDIATE SECURITY RISKS
+
 ```yaml
 Exposed_API_Keys:
   Status: "EXPOSED IN REPOSITORY"
@@ -290,6 +306,7 @@ Network_Security:
 ## 7. Oracle ARM Deployment Recommendations
 
 ### Phase 1: ARM Compatibility Resolution (CRITICAL)
+
 ```bash
 # Test ARM compatibility for each image
 docker buildx build --platform linux/arm64 .
@@ -307,6 +324,7 @@ services:
 ```
 
 ### Phase 2: Container Registry Migration
+
 ```yaml
 Registry_Setup:
   AWS_ECR:
@@ -321,6 +339,7 @@ Registry_Setup:
 ```
 
 ### Phase 3: Deployment Automation
+
 ```yaml
 CI_CD_Implementation:
   GitHub_Actions:
@@ -340,16 +359,19 @@ CI_CD_Implementation:
 ## 8. Implementation Priority Matrix
 
 ### 🔴 CRITICAL (Deploy Blockers)
+
 1. **ARM Image Compatibility** - Oracle deployment will fail
 2. **API Key Security** - Immediate financial/security risk
 3. **Health Check Validation** - Service reliability
 
 ### 🟡 HIGH PRIORITY (Launch Requirements)  
+
 1. **Monitoring Stack** - Operational visibility
 2. **Backup Strategy** - Data protection
 3. **CI/CD Pipeline** - Deployment consistency
 
 ### 🟢 MEDIUM PRIORITY (Post-Launch)
+
 1. **Security Hardening** - Enhanced protection
 2. **Performance Optimization** - Resource efficiency
 3. **Documentation** - Operational procedures
@@ -359,6 +381,7 @@ CI_CD_Implementation:
 ## 9. Immediate Action Plan
 
 ### Next 24 Hours
+
 ```yaml
 Security_Actions:
   1: "Rotate all exposed API keys immediately"
@@ -377,6 +400,7 @@ Deployment_Validation:
 ```
 
 ### Next 7 Days
+
 ```yaml
 Infrastructure:
   1: "Implement centralized monitoring"

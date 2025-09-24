@@ -9,6 +9,7 @@
 ## 📋 **COMPATIBILITY TEST RESULTS**
 
 ### ✅ **FULLY COMPATIBLE** (No Changes Needed)
+
 | Service | Image | Status | Notes |
 |---------|--------|--------|--------|
 | PostgreSQL | `postgres:15-alpine` | ✅ COMPATIBLE | Native ARM64, works perfectly |
@@ -16,6 +17,7 @@
 | LiteLLM Gateway | `ghcr.io/berriai/litellm:main-latest` | ✅ COMPATIBLE | Starts successfully on ARM64 |
 
 ### 🔧 **FIXED COMPATIBILITY ISSUES**
+
 | Service | Image | Original Issue | Fix Applied |
 |---------|--------|----------------|-------------|
 | Node Exporter | `prom/node-exporter:latest` | Runtime test failed | ✅ Removed incompatible CLI flags |
@@ -25,7 +27,9 @@
 ## 🔧 **DETAILED FIX IMPLEMENTATION**
 
 ### 1. **Node Exporter Fix**
+
 **Problem**: Runtime test failed due to incompatible command-line flags
+
 ```bash
 # ❌ INCOMPATIBLE FLAGS (removed):
 --web.enable-lifecycle
@@ -42,6 +46,7 @@ command:
 ```
 
 ### 2. **Open WebUI Fix**
+
 **Problem**: Container doesn't support CLI commands (--help, --version)
 **Root Cause**: Open WebUI is designed for service mode only, not CLI usage
 
@@ -62,6 +67,7 @@ open-webui:
 ```
 
 ### 3. **Pipelines Service Optimization**
+
 **Problem**: Potential ARM64 performance issues and integration configuration
 
 ```yaml
@@ -79,6 +85,7 @@ pipelines:
 ## 📁 **CREATED FILES**
 
 ### 1. **Fixed Deployment Configuration**
+
 - **File**: `deploy/01-oracle-ARM64-FIXED.yml`
 - **Purpose**: Complete ARM64-compatible Docker Compose configuration
 - **Features**:
@@ -88,6 +95,7 @@ pipelines:
   - Health checks and proper service dependencies
 
 ### 2. **Automated Deployment Script**
+
 - **File**: `scripts/deploy-arm64-oracle.sh`
 - **Purpose**: Automated deployment with validation
 - **Features**:
@@ -97,12 +105,14 @@ pipelines:
   - Deployment status reporting
 
 ### 3. **Compatibility Test Results**
+
 - **File**: Generated ARM64 deployment ready configuration
 - **Status**: All services now pass compatibility tests
 
 ## 🚀 **DEPLOYMENT INSTRUCTIONS**
 
 ### **Prerequisites**
+
 ```bash
 # Set required environment variables
 export POSTGRES_PASSWORD="your_secure_password"
@@ -111,6 +121,7 @@ export WEBUI_SECRET_KEY="your_webui_secret"
 ```
 
 ### **Deploy to Oracle ARM64**
+
 ```bash
 # Execute the fixed deployment
 ./scripts/deploy-arm64-oracle.sh deploy
@@ -123,14 +134,16 @@ export WEBUI_SECRET_KEY="your_webui_secret"
 ```
 
 ### **Service Endpoints** (Oracle Cloud)
-- **LiteLLM Gateway**: http://100.96.197.84:4000
-- **Open WebUI**: http://100.96.197.84:3000
-- **Pipelines API**: http://100.96.197.84:9099
-- **Node Exporter**: http://100.96.197.84:9100/metrics
+
+- **LiteLLM Gateway**: <http://100.96.197.84:4000>
+- **Open WebUI**: <http://100.96.197.84:3000>
+- **Pipelines API**: <http://100.96.197.84:9099>
+- **Node Exporter**: <http://100.96.197.84:9100/metrics>
 
 ## 🎯 **VALIDATION RESULTS**
 
 ### **OS Version Compatibility**
+
 - **Oracle (100.96.197.84)**: Ubuntu 24.04 LTS (Noble) - ARM64 native ✅
 - **Thanos (100.122.12.54)**: Ubuntu 24.04 LTS (Noble) - x86_64 GPU ✅
 - **Starlord (100.72.73.3)**: Ubuntu 25.04 LTS (Plucky) - x86_64 with ARM testing ✅
@@ -138,6 +151,7 @@ export WEBUI_SECRET_KEY="your_webui_secret"
 Scripts now detect OS via `/etc/os-release` and branch for version-specific logic (apt repos, timeouts, cgroup).
 
 ### **Before Cleanup & Fixes**
+
 - **Oracle Instance**: 60+ containers from previous project ❌
 - **Thanos Instance**: 40+ containers from previous project ❌
 - **Local Machine**: Mixed containers from testing ❌
@@ -145,6 +159,7 @@ Scripts now detect OS via `/etc/os-release` and branch for version-specific logi
 - **OS Misdetection**: Generic SSH commands failed on version diffs ❌
 
 ### **After Cleanup & Fixes**
+
 - **Oracle Instance**: Completely clean ✅
 - **Thanos Instance**: Completely clean ✅
 - **Local Machine**: Completely clean ✅

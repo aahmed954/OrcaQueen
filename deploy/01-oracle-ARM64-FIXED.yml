@@ -269,8 +269,6 @@ volumes:
     driver: local
   vault_data:
     driver: local
-  vault_data:
-    driver: local
 
 networks:
   aiswarm:

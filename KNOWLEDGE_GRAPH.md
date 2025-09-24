@@ -6,7 +6,7 @@
 
 ## 🌐 System Architecture Overview
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                          AI-SWARM-MIAMI-2025                          │
 │                     3-Node Distributed AI Architecture                │
@@ -104,7 +104,7 @@ sequenceDiagram
 
 ## 🎐 Network Topology
 
-```
+```text
                         🌍 INTERNET
                              │
                     ┌────────┴────────┐
@@ -181,7 +181,41 @@ Dependency Tree:
 
 ## 🎯 Model Routing Decision Tree
 
+```mermaid
+flowchart TD
+  A[Request Arrives at LiteLLM]
+  A --> B{Model Type?}
+  B --> C1[Local Model (llama-3.2-dark)]
+  B --> C2[API Model]
+  
+  C1 --> D1{vLLM Available?}
+  D1 --> E1[YES: Route to vLLM:8000]
+  D1 --> E2[NO: Queue or Fallback]
+  
+  C2 --> F1{Gemini Models?}
+  C2 --> F2{OpenRouter Models?}
+  
+  F1 --> G1{Budget OK?}
+  G1 --> H1[YES: Use Primary Key]
+  G1 --> H2[NO: Use Secondary/Free]
+  F1 --> I1{Context > 128K?}
+  I1 --> J1[YES: gemini-2.5-pro (2M context)]
+  I1 --> J2[NO: gemini-2.5-flash (1M context)]
+  
+  F2 --> K1{Credits Available?}
+  K1 --> L1[YES: Route to OpenRouter]
+  K1 --> L2[NO: Free Tier Fallback]
+  F2 --> M1[Free Tier Models]
+  M1 --> M2[deepseek-v3.1]
+  M1 --> M3[grok-4-fast-free]
+  M1 --> M4[gemini-2.5-flash-free]
+  
+  A --> N[Apply Rate Limiting]
+  N --> O1[Check requests/minute]
+  N --> O2[Check tokens/hour]
+  N --> P[Return Response or Error]
 ```
+
 Request Arrives at LiteLLM
 │
 ├── Check Model Request
@@ -221,13 +255,15 @@ Request Arrives at LiteLLM
 │       └── Check tokens/hour
 │
 └── Return Response or Error
+
 ```
 
 ---
 
 ## 🔐 Security Layer Diagram
 
-```
+```text
+
 ┌────────────────────────────────────────────────────────┐
 │                    SECURITY LAYERS                        │
 └────────────────────────────────────────────────────────┘
@@ -261,13 +297,14 @@ Request Arrives at LiteLLM
    ├── HashiCorp Vault
    ├── Runtime injection
    └── No hardcoded secrets
-```
+
 
 ---
 
 ## 📊 Performance Flow
 
-```
+```text
+
 Request Processing Pipeline:
 
 User Request
@@ -309,10 +346,12 @@ Response Generation
     └──> Cache response
 
 Performance Metrics:
+
 - Throughput: 110+ req/sec
 - Latency: < 100ms first token
 - Context: Up to 128K tokens
 - Batch: 8-32 dynamic
+
 ```
 
 ---
@@ -320,33 +359,45 @@ Performance Metrics:
 ## 🔄 Data Flow Patterns
 
 ### Write Path
-```
+
+```text
+
 User Input → Open WebUI → LiteLLM → PostgreSQL
                               │
                               └────> Redis (Cache)
+
 ```
 
 ### Read Path
-```
+
+```text
+
 User Query → Open WebUI → LiteLLM → Redis (Check)
                               │
                               ├── Hit → Return
                               └── Miss → vLLM/API → Generate
+
 ```
 
 ### RAG Path
-```
+
+```text
+
 Document → Embeddings → Qdrant (Store)
                            │
 Query → Embedding → Qdrant (Search) → Context → LLM
+
 ```
 
 ### Monitoring Path
-```
+
+```text
+
 Services → /metrics endpoint → Prometheus (Scrape)
                                     │
                                     ├──> Grafana (Display)
                                     └──> AlertManager (Alert)
+
 ```
 
 ---
@@ -418,7 +469,7 @@ Internal Dependencies:
 
 ## 🌍 External Integration Points
 
-```
+```text
 External APIs:
 ├── OpenRouter API
 │   ├── Endpoint: https://openrouter.ai/api/v1
@@ -448,4 +499,4 @@ External APIs:
 
 ---
 
-*Knowledge Graph generated for AI-SWARM-MIAMI-2025*
+# Knowledge Graph generated for AI-SWARM-MIAMI-2025

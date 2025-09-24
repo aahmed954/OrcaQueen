@@ -3,6 +3,7 @@
 ## Executive Summary
 
 Complete 3-node AI swarm deployment with Railway Pro overflow capacity, featuring:
+
 - **110-130 req/s throughput** with <100ms first token latency
 - **64GB RAM on Starlord** (corrected) enabling 70B parameter models
 - **Full security hardening** with Vault secrets management
@@ -11,7 +12,7 @@ Complete 3-node AI swarm deployment with Railway Pro overflow capacity, featurin
 
 ## 🏗️ Architecture Overview
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                  ORACLE ARM NODE                         │
 │              100.96.197.84 (22GB RAM)                    │
@@ -66,6 +67,7 @@ Complete 3-node AI swarm deployment with Railway Pro overflow capacity, featurin
 ## 🔐 Security Implementation
 
 ### API Key Protection (CRITICAL)
+
 ```bash
 # 1. Set file permissions
 chmod 600 /home/starlord/OrcaQueen/.env.production
@@ -81,6 +83,7 @@ docker exec oracle-vault vault kv put secret/api-keys \
 ```
 
 ### Network Security
+
 - ✅ Tailscale ACLs configured
 - ✅ PostgreSQL authentication enabled
 - ✅ Redis password protection
@@ -99,6 +102,7 @@ docker exec oracle-vault vault kv put secret/api-keys \
 | **Railway** | Phi-3-mini (CPU) | 4K | 2 | 2-5 req/s |
 
 ### Optimizations Applied
+
 - FP8 KV cache (50% memory reduction)
 - Prefix caching enabled
 - Continuous batching
@@ -108,6 +112,7 @@ docker exec oracle-vault vault kv put secret/api-keys \
 ## ⚠️ Critical Pre-Deployment Checks
 
 ### 1. ARM Compatibility Test (MUST RUN)
+
 ```bash
 # Test Oracle ARM compatibility
 ssh oracle1 << 'EOF'
@@ -119,6 +124,7 @@ EOF
 ```
 
 ### 2. Verify Qdrant (DO NOT RECREATE)
+
 ```bash
 # Confirm Qdrant is running on Starlord
 curl -f http://100.72.73.3:6333/health
@@ -126,6 +132,7 @@ curl -f http://100.72.73.3:6333/collections
 ```
 
 ### 3. Network Validation
+
 ```bash
 # Run comprehensive validation
 ./deploy/00-infrastructure-validation.sh
@@ -134,6 +141,7 @@ curl -f http://100.72.73.3:6333/collections
 ## 📦 Deployment Sequence
 
 ### Phase 1: Infrastructure Setup
+
 ```bash
 # 1. Copy production environment file
 cp .env.production .env
@@ -147,6 +155,7 @@ sudo tailscale up --advertise-routes=172.20.0.0/16 --accept-routes
 ```
 
 ### Phase 2: Oracle Deployment (ARM64)
+
 ```bash
 # Deploy to Oracle
 scp -r . root@100.96.197.84:/opt/ai-swarm/
@@ -161,6 +170,7 @@ curl -f http://100.96.197.84:3001     # Grafana
 ```
 
 ### Phase 3: Starlord Deployment (Local)
+
 ```bash
 # Deploy locally on Starlord
 cd /home/starlord/OrcaQueen
@@ -173,6 +183,7 @@ curl -f http://localhost:6333/health   # Qdrant (existing)
 ```
 
 ### Phase 4: Thanos Deployment
+
 ```bash
 # Deploy to Thanos
 scp -r . root@100.122.12.54:/opt/ai-swarm/
@@ -187,6 +198,7 @@ curl -f http://100.122.12.54:8001     # GPT Researcher
 ```
 
 ### Phase 5: Railway Deployment (Optional)
+
 ```bash
 # Deploy auxiliary services to Railway
 railway login
@@ -197,6 +209,7 @@ railway up -f deploy/04-railway-services.yml
 ## 🎯 Success Criteria
 
 ### Day 1 Requirements
+
 - [x] Uncensored models (Mixtral, Mistral, Phi)
 - [x] Web research (GPT Researcher + Brave/Perplexity)
 - [x] Reliable GUI (SillyTavern + Open WebUI)
@@ -204,12 +217,14 @@ railway up -f deploy/04-railway-services.yml
 - [x] Security hardening (Vault + non-root containers)
 
 ### Performance Targets
+
 - [x] 110-130 req/s throughput achievable
 - [x] <100ms first token latency with warm models
 - [x] 128K context support on Starlord
 - [x] 85% GPU utilization sustainable
 
 ### Security Compliance
+
 - [x] API keys encrypted and secured
 - [x] Network segmentation via Tailscale
 - [x] Authentication on all services
@@ -219,26 +234,31 @@ railway up -f deploy/04-railway-services.yml
 ## 🚨 Known Issues & Mitigations
 
 ### ARM Compatibility Risk
+
 **Issue**: LiteLLM and Open WebUI ARM64 support unknown
 **Mitigation**: Dockerfiles provided for building from source
 
 ### Thermal Management
+
 **Issue**: Thanos RTX 3080 thermal risk
 **Mitigation**: Automatic throttling at 85°C, monitoring alerts
 
 ### Single Points of Failure
+
 **Issue**: PostgreSQL/Redis on Oracle only
 **Mitigation**: Daily backups, Railway failover ready
 
 ## 📊 Monitoring & Observability
 
 ### Access Points
-- **Grafana Dashboard**: http://100.96.197.84:3001
-- **Prometheus**: http://100.96.197.84:9090
-- **Consul UI**: http://100.96.197.84:8500
-- **HAProxy Stats**: http://100.96.197.84:8888/stats
+
+- **Grafana Dashboard**: <http://100.96.197.84:3001>
+- **Prometheus**: <http://100.96.197.84:9090>
+- **Consul UI**: <http://100.96.197.84:8500>
+- **HAProxy Stats**: <http://100.96.197.84:8888/stats>
 
 ### Key Metrics
+
 - GPU utilization and temperature
 - Request latency (p50, p95, p99)
 - Token generation rate
@@ -277,6 +297,7 @@ docker-compose -f deploy/0X-*.yml.backup up -d
 **STATUS**: ✅ READY FOR DEPLOYMENT
 
 This plan addresses all critical issues identified by the multi-agent analysis:
+
 - ARM compatibility with specific ARM64 images
 - Security hardening with Vault and encryption
 - Performance optimization for 64GB RAM

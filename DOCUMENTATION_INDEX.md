@@ -15,6 +15,7 @@ This documentation index serves as the master reference for the AI-SWARM-MIAMI-2
 ### 1. PROJECT DOCUMENTATION MAP
 
 #### 1.1 Core Documentation
+
 | Document | Location | Purpose | Status |
 |----------|----------|---------|--------|
 | **Main README** | `/README.md` | Project overview, quick start guide | ✅ Complete |
@@ -23,6 +24,7 @@ This documentation index serves as the master reference for the AI-SWARM-MIAMI-2
 | **Documentation Index** | `/DOCUMENTATION_INDEX.md` | Master documentation reference (this file) | ✅ Complete |
 
 #### 1.2 Deployment Documentation
+
 | Document | Location | Purpose | Status |
 |----------|----------|---------|--------|
 | **Deployment Plan** | `/DEPLOYMENT_PLAN_FINAL.md` | Final deployment strategy with Railway Pro | ✅ Complete |
@@ -31,11 +33,13 @@ This documentation index serves as the master reference for the AI-SWARM-MIAMI-2
 | **Deploy Script** | `/deploy.sh` | Main deployment automation script | ✅ Complete |
 
 #### 1.3 Analysis Reports
+
 | Document | Location | Purpose | Status |
 |----------|----------|---------|--------|
 | **Code Analysis** | `/claudedocs/COMPREHENSIVE_CODE_ANALYSIS_REPORT.md` | Comprehensive codebase analysis | ✅ Complete |
 
 #### 1.4 Session Memory
+
 | Document | Location | Purpose | Status |
 |----------|----------|---------|--------|
 | **Project Architecture** | `/.serena/memories/project_architecture.md` | Architecture summary for session persistence | ✅ Complete |
@@ -47,6 +51,7 @@ This documentation index serves as the master reference for the AI-SWARM-MIAMI-2
 ### 2. API DOCUMENTATION
 
 #### 2.1 Service APIs
+
 | Service | Port | Documentation | Authentication |
 |---------|------|---------------|----------------|
 | **Open WebUI** | 3000 | REST API for UI control | JWT tokens |
@@ -58,6 +63,7 @@ This documentation index serves as the master reference for the AI-SWARM-MIAMI-2
 | **GPT Researcher** | 8001 | Research automation API | API key |
 
 #### 2.2 Data Models
+
 ```yaml
 Core_Models:
   ChatRequest:
@@ -79,6 +85,7 @@ Core_Models:
 ```
 
 #### 2.3 Integration Patterns
+
 - **Model Routing**: LiteLLM → vLLM/OpenRouter
 - **Vector Storage**: Documents → Embeddings → Qdrant
 - **Research Pipeline**: Query → Search → Analysis → Report
@@ -91,6 +98,7 @@ Core_Models:
 #### 3.1 Infrastructure Setup
 
 ##### Docker Compose Files
+
 | File | Purpose | Node |
 |------|---------|------|
 | `/deploy/01-oracle-ARM.yml` | Oracle ARM node services | Oracle |
@@ -100,6 +108,7 @@ Core_Models:
 | `/docker-compose.railway.yml` | Railway-specific configuration | Cloud |
 
 ##### Deployment Scripts
+
 | Script | Location | Purpose |
 |--------|----------|---------|
 | **Infrastructure Validation** | `/deploy/00-infrastructure-validation.sh` | Pre-deployment checks |
@@ -109,6 +118,7 @@ Core_Models:
 #### 3.2 Configuration Management
 
 ##### Configuration Files
+
 | Config | Location | Purpose |
 |--------|----------|---------|
 | **LiteLLM Config** | `/config/litellm.yaml` | Model routing and pricing |
@@ -119,6 +129,7 @@ Core_Models:
 | **SearXNG** | `/config/searxng-settings.yml` | Search engine configuration |
 
 ##### Environment Files
+
 | File | Purpose | Security |
 |------|---------|----------|
 | `.env.example` | Template for environment variables | ✅ Safe to commit |
@@ -127,6 +138,7 @@ Core_Models:
 #### 3.3 Operational Procedures
 
 ##### Startup Sequence
+
 ```bash
 1. Oracle Node Services (PostgreSQL, Redis, Consul)
 2. LiteLLM Gateway and Open WebUI
@@ -136,6 +148,7 @@ Core_Models:
 ```
 
 ##### Shutdown Sequence
+
 ```bash
 1. User-facing services (SillyTavern, Open WebUI)
 2. Inference engines (vLLM)
@@ -150,7 +163,8 @@ Core_Models:
 #### 4.1 System Design
 
 ##### Node Architecture
-```
+
+```text
 Oracle ARM (100.96.197.84) - 22GB RAM
 ├── Orchestration Layer
 │   ├── LiteLLM Gateway
@@ -184,6 +198,7 @@ Thanos (100.122.12.54) - RTX 3080, 61GB RAM
 ```
 
 ##### Data Flow Diagrams
+
 ```mermaid
 graph LR
     User --> OpenWebUI
@@ -198,6 +213,7 @@ graph LR
 #### 4.2 Component Interactions
 
 ##### Service Dependencies
+
 ```yaml
 Service_Dependencies:
   LiteLLM:
@@ -224,6 +240,7 @@ Service_Dependencies:
 #### 5.1 Setup Guides
 
 ##### Local Development Setup
+
 ```bash
 # Clone repository
 git clone https://github.com/aahmed954/OrcaQueen.git
@@ -241,6 +258,7 @@ pytest tests/
 ```
 
 ##### Docker Development
+
 ```bash
 # Build images
 docker-compose build
@@ -256,12 +274,14 @@ docker-compose -f docker-compose.dev.yml up
 #### 5.2 Contribution Guidelines
 
 ##### Code Standards
+
 - **Python**: PEP 8 compliance, type hints required
 - **Docker**: Multi-stage builds, non-root users
 - **YAML**: 2-space indentation, comments for complex sections
 - **Bash**: ShellCheck compliance, error handling
 
 ##### Pull Request Process
+
 1. Fork repository
 2. Create feature branch (`feature/your-feature`)
 3. Write tests for new functionality
@@ -272,6 +292,7 @@ docker-compose -f docker-compose.dev.yml up
 #### 5.3 Coding Standards
 
 ##### Python Code Style
+
 ```python
 # Required imports structure
 from typing import Dict, List, Optional
@@ -287,6 +308,7 @@ class ModelRouter:
 ```
 
 ##### Docker Best Practices
+
 ```dockerfile
 # Multi-stage builds
 FROM python:3.11-slim as builder
@@ -304,6 +326,7 @@ USER nonroot
 #### 6.1 Monitoring
 
 ##### Metrics Collection
+
 | Metric | Source | Collection Interval | Retention |
 |--------|--------|-------------------|-----------|
 | GPU Utilization | nvidia-smi exporter | 15s | 30d |
@@ -312,6 +335,7 @@ USER nonroot
 | Cost Tracking | OpenRouter API | 5m | 1y |
 
 ##### Dashboards
+
 - **System Overview**: CPU, Memory, Network, Disk
 - **GPU Performance**: Utilization, Memory, Temperature
 - **API Metrics**: Request rate, latency, errors
@@ -320,6 +344,7 @@ USER nonroot
 #### 6.2 Logging
 
 ##### Log Locations
+
 ```yaml
 Service_Logs:
   Oracle:
@@ -337,6 +362,7 @@ Service_Logs:
 ```
 
 ##### Log Aggregation
+
 - **ELK Stack**: Elasticsearch, Logstash, Kibana
 - **Log Levels**: ERROR, WARN, INFO, DEBUG
 - **Retention**: 30 days hot, 90 days cold storage
@@ -346,6 +372,7 @@ Service_Logs:
 ##### Common Issues and Solutions
 
 ###### vLLM Not Starting
+
 ```bash
 # Check GPU memory
 nvidia-smi
@@ -357,6 +384,7 @@ nvcc --version
 ```
 
 ###### Network Connectivity
+
 ```bash
 # Check Tailscale
 tailscale status
@@ -368,6 +396,7 @@ ping 100.96.197.84
 ```
 
 ###### High Latency
+
 ```bash
 # Check model loading
 docker logs starlord-vllm | grep "Model loaded"
@@ -381,6 +410,7 @@ curl localhost:8000/metrics | grep batch
 #### 6.4 Maintenance Procedures
 
 ##### Backup Procedures
+
 ```bash
 # Database backup
 pg_dump -h localhost -U litellm -d litellm > backup.sql
@@ -393,6 +423,7 @@ tar -czf config-backup.tar.gz config/ .env
 ```
 
 ##### Update Procedures
+
 ```bash
 # Pull latest changes
 git pull origin main
@@ -405,6 +436,7 @@ docker-compose up -d --no-deps --build service_name
 ```
 
 ##### Key Rotation
+
 ```python
 # Automated key rotation script
 python scripts/key_rotation.py --rotate-all
@@ -415,6 +447,7 @@ python scripts/key_rotation.py --rotate-all
 ## 📋 Documentation Quality Assessment
 
 ### ✅ Complete Documentation
+
 - Project overview and quick start
 - Architecture design and rationale
 - Deployment plans and checklists
@@ -422,12 +455,14 @@ python scripts/key_rotation.py --rotate-all
 - Monitoring setup
 
 ### ⚠️ Partial Documentation
+
 - API endpoint specifications (basic coverage)
 - Integration testing procedures (limited)
 - Performance tuning guides (basic)
 - Disaster recovery procedures (outline only)
 
 ### ❌ Missing Documentation
+
 - Detailed API request/response schemas
 - Comprehensive integration test suite documentation
 - Advanced performance optimization guide
@@ -440,12 +475,14 @@ python scripts/key_rotation.py --rotate-all
 ## 🔍 Knowledge Gaps Analysis
 
 ### Critical Gaps
+
 1. **API Documentation**: Need OpenAPI/Swagger specs for all services
 2. **Integration Testing**: Comprehensive test suite documentation needed
 3. **Security Runbook**: Incident response procedures missing
 4. **Performance Baseline**: Detailed benchmarking documentation needed
 
 ### Improvement Opportunities
+
 1. **Interactive Documentation**: Consider adding Docusaurus or MkDocs
 2. **API Explorer**: Implement Swagger UI for API testing
 3. **Architecture Diagrams**: Add more detailed Mermaid/PlantUML diagrams
@@ -456,6 +493,7 @@ python scripts/key_rotation.py --rotate-all
 ## 🔎 Searchable Documentation Structure
 
 ### Quick Reference Tags
+
 - `#architecture` - System design and architecture
 - `#deployment` - Deployment procedures
 - `#api` - API documentation
@@ -466,6 +504,7 @@ python scripts/key_rotation.py --rotate-all
 - `#development` - Development guides
 
 ### Search Patterns
+
 ```bash
 # Find all deployment-related docs
 grep -r "deploy" docs/ --include="*.md"
@@ -482,28 +521,32 @@ grep -r "example" config/ --include="*.yml"
 ## 📚 Additional Resources
 
 ### Internal Resources
-- **GitHub Repository**: https://github.com/aahmed954/OrcaQueen
+
+- **GitHub Repository**: <https://github.com/aahmed954/OrcaQueen>
 - **CI/CD Pipeline**: `.github/workflows/ci.yml`
 - **Issue Tracker**: GitHub Issues
 
 ### External Documentation
-- **vLLM**: https://docs.vllm.ai
-- **LiteLLM**: https://docs.litellm.ai
-- **Qdrant**: https://qdrant.tech/documentation
-- **SillyTavern**: https://docs.sillytavern.app
-- **Open WebUI**: https://docs.openwebui.com
+
+- **vLLM**: <https://docs.vllm.ai>
+- **LiteLLM**: <https://docs.litellm.ai>
+- **Qdrant**: <https://qdrant.tech/documentation>
+- **SillyTavern**: <https://docs.sillytavern.app>
+- **Open WebUI**: <https://docs.openwebui.com>
 
 ---
 
 ## 🔄 Documentation Maintenance
 
 ### Update Schedule
+
 - **Weekly**: Deployment status, operational metrics
 - **Monthly**: Architecture updates, performance baselines
 - **Quarterly**: Complete documentation review
 - **As Needed**: API changes, security updates
 
 ### Documentation Standards
+
 1. All documentation in Markdown format
 2. Version control through Git
 3. Peer review for major changes
@@ -522,4 +565,4 @@ This documentation index is a living document and should be updated as the proje
 
 ---
 
-*Generated with comprehensive analysis of the AI-SWARM-MIAMI-2025 project structure*
+### Generated with comprehensive analysis of the AI-SWARM-MIAMI-2025 project structure
